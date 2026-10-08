@@ -9,12 +9,12 @@ export async function loadStats(force = false) {
   try {
     const q = F.query(gcol('matches'), F.orderBy('date', 'desc'), F.limit(500));
     const snap = await F.getDocs(q);
-    const matches = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const matches = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(m => m.status !== 'live');
     S.stats = { at: Date.now(), matches, per: compute(matches) };
   } finally { S.statsLoading = false; S.render(); }
 }
 
-function blank() { return { apps: 0, goals: 0, assists: 0, saves: 0, pens: 0, wins: 0, draws: 0, losses: 0, hat: 0, log: [] }; }
+function blank() { return { apps: 0, goals: 0, assists: 0, saves: 0, pens: 0, wins: 0, draws: 0, losses: 0, hat: 0, yellow: 0, red: 0, log: [] }; }
 
 export function compute(matches) {
   const per = {};
@@ -35,6 +35,7 @@ export function compute(matches) {
       }
       if (g.assist) { const p = P(g.assist); p.assists++; p.log.push({ m, g, kind: 'assist' }); }
     }
+    for (const e of m.events || []) { if (e.type === 'yellow' && e.uid) P(e.uid).yellow++; if (e.type === 'red' && e.uid) P(e.uid).red++; }
     for (const id in inMatch) if (inMatch[id] >= 3) P(id).hat++;
     for (const id in (m.saves || {})) P(id).saves += m.saves[id] || 0;
   }
@@ -88,13 +89,28 @@ export function matchModal(id) {
       ${m.pens ? `<div class="tag gold" dir="ltr">${t('pens')}: ${m.pens.a} - ${m.pens.b}</div>` : ''}
     </div>
     <div class="grid2">${team(m.teamA || {})}${team(m.teamB || {})}</div>
-    ${(m.goals || []).length ? `<h3 style="margin:14px 0 4px">${t('goals')}</h3>` + m.goals.map(g => `
+    ${(m.events || []).length ? `<h3 style="margin:14px 0 4px">${t('events')}</h3>` + [...m.events].sort((a, b) => (a.t || 0) - (b.t || 0)).map(e => eventLine(m, e)).join('') : ''}
+    ${!(m.events || []).length && (m.goals || []).length ? `<h3 style="margin:14px 0 4px">${t('goals')}</h3>` + m.goals.map(g => `
       <div class="li"><div><b>${nm(g.uid)}</b>${g.og ? ` <span class="tag warn">${t('own_goal')}</span>` : ''}${g.penalty ? ` <span class="tag gold">${t('penalty')}</span>` : ''}
       ${g.assist ? `<div class="mute small">${t('assist_by')}: ${nm(g.assist)}</div>` : ''}</div><span class="tag">${t('team')} ${esc(g.team === 'A' ? m.teamA?.name : m.teamB?.name)}</span></div>`).join('') : ''}
-    ${Object.keys(m.saves || {}).length ? `<h3 style="margin:14px 0 4px">${t('saves')}</h3>` + Object.entries(m.saves).map(([id, n]) => `<div class="li"><div>${nm(id)}</div><b>${n}</b></div>`).join('') : ''}
+    ${!(m.events || []).length && Object.keys(m.saves || {}).length ? `<h3 style="margin:14px 0 4px">${t('saves')}</h3>` + Object.entries(m.saves).map(([id, n]) => `<div class="li"><div>${nm(id)}</div><b>${n}</b></div>`).join('') : ''}
     <div class="row">${isAdmin() ? `<button class="btn primary" data-act="editMatch" data-id="${esc(m.id)}">${t('edit')}</button>` : ''}<button class="btn" data-act="closeModal">${t('close')}</button></div>`);
 }
-ACTIONS.openMatch = el => matchModal(el.dataset.id);
+ACTIONS.openMatch = el => {
+  const m = findMatch(el.dataset.id);
+  if (m && m.status === 'live') S.go({ view: 'referee', gid: S.gid, sid: m.sid, mid: m.id });
+  else matchModal(el.dataset.id);
+};
+export function eventLine(m, e, del = false) {
+  const nm = id => esc(m.names?.[id] || S.members[id]?.name || '-');
+  const tn = e.team === 'A' ? m.teamA?.name : m.teamB?.name;
+  let body = '';
+  if (e.type === 'goal') body = `<b>${nm(e.uid)}</b>${e.og ? ` <span class="tag warn">${t('own_goal')}</span>` : ''}${e.penalty ? ` <span class="tag gold">${t('penalty')}</span>` : ''}${e.assist ? `<div class="mute small">${t('assist_by')}: ${nm(e.assist)}</div>` : ''}`;
+  else if (e.type === 'yellow') body = `<span class="cd cy"></span> <b>${nm(e.uid)}</b>`;
+  else if (e.type === 'red') body = `<span class="cd cr"></span> <b>${nm(e.uid)}</b>${e.second ? ` <span class="tag">${t('second_yellow')}</span>` : ''}`;
+  else body = `<b>${nm(e.uid)}</b> <span class="tag">${t('save_word')}</span>`;
+  return `<div class="li"><b dir="ltr" style="width:40px">${Math.floor((e.t || 0) / 60) + 1}'</b><div>${body}</div><span class="tag">${t('team')} ${esc(tn)}</span>${del ? `<button class="btn sm danger" data-act="refDelEv" data-id="${esc(e.id)}">${icon('x')}</button>` : ''}</div>`;
+}
 
 // ---------- rank tab ----------
 export function statsTab() {
@@ -151,6 +167,8 @@ export function memberBody(uid) {
     <div class="tile"><span class="mute small">${t('rk_saves')}</span><b>${p.saves}</b></div>
     <div class="tile"><span class="mute small">${t('wins')}</span><b>${p.wins}</b></div>
     <div class="tile"><span class="mute small">${t('hat_tricks')}</span><b>${p.hat}</b></div>
+    <div class="tile"><span class="mute small">${t('yellow_cards')}</span><b>${p.yellow}</b></div>
+    <div class="tile"><span class="mute small">${t('red_cards')}</span><b>${p.red}</b></div>
   </div>
   <h3>${t('achievements')}</h3>
   <div class="card"><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px">

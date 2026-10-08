@@ -36,6 +36,7 @@
     if (location.protocol === 'file:') window.addEventListener('DOMContentLoaded', window.__bootMsg);
     setTimeout(window.__bootMsg, 6000);
   </script>
+  <script src="version.js"></script>
   <script type="module" src="app.js" onerror="__bootMsg()"></script>
   <script>
     if ('serviceWorker' in navigator) {

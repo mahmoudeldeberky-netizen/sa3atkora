@@ -113,3 +113,10 @@ input[type=checkbox]{width:20px;height:20px;min-height:0;accent-color:var(--g700
 .rk{width:28px;height:28px;border-radius:50%;display:inline-grid;place-items:center;font-weight:800;font-size:.85rem;background:var(--line);color:var(--mute);flex:none}
 .rk.r1{background:#e0a82e;color:#fff}.rk.r2{background:#9aa5ab;color:#fff}.rk.r3{background:#b87a4b;color:#fff}
 .btn .ic{width:1.1em;height:1.1em}
+
+/* referee mode */
+.clock{font-size:5rem;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums;letter-spacing:.02em;color:var(--mute)}
+.clock.run{color:var(--g600)}.clock.pause{color:#b8860b}.clock.low{color:var(--warn)}
+.cd{display:inline-block;width:12px;height:17px;border-radius:2px;vertical-align:-3px}
+.cd.cy{background:#f1c40f}.cd.cr{background:#d93025}
+.login .mute{color:rgba(255,255,255,.75)}

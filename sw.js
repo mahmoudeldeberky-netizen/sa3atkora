@@ -1,5 +1,6 @@
-const CACHE = 'sa3et-kora-v3';
-const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'core.js', 'admin.js', 'session.js', 'stats.js', 'i18n.js', 'firebase-config.js', 'manifest.json', 'icons/icon-192.png'];
+importScripts('version.js');
+const CACHE = 'sa3et-kora-' + self.APP_VERSION;
+const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'core.js', 'admin.js', 'session.js', 'stats.js', 'i18n.js', 'firebase-config.js', 'manifest.json', 'version.js', 'icons/icon-192.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

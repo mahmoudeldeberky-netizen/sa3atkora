@@ -274,6 +274,7 @@ function settingsView() {
     <div><label>${t('max_players')}</label>${numIn('st_max', g.maxPlayers ?? 18)}</div></div>
     <div class="grid2"><div><label>${t('cancel_hours')}</label>${numIn('st_cancel', g.cancelHours ?? 12)}</div>
     <div><label>${t('team_size')}</label>${numIn('st_team', g.teamSize ?? 6)}</div></div>
+    <label>${t('match_minutes')}</label>${numIn('st_minutes', g.matchMinutes ?? 15)}
     <div class="grid2"><div><label>${t('sched_day')}</label><select id="st_dow">${dowOpts(sc.dow ?? 4)}</select></div>
     <div><label>${t('sched_time')}</label><input id="st_time" type="time" dir="ltr" lang="en" value="${esc(sc.time || '21:00')}"></div></div>
     <div class="chk" style="margin-top:14px"><input type="checkbox" id="st_results" ${feat('results') ? 'checked' : ''}><label for="st_results">${t('feat_results')}</label></div>
@@ -285,7 +286,7 @@ ACTIONS.saveSettings = async () => {
   const data = {
     name, currency: val('st_cur').trim(), defaultFee: num(val('st_fee'), 10), hourCost: num(val('st_cost'), 70),
     maxPlayers: Math.max(1, Math.round(num(val('st_max'), 18))), cancelHours: Math.max(0, Math.round(num(val('st_cancel'), 12))),
-    teamSize: Math.max(1, Math.round(num(val('st_team'), 6))),
+    teamSize: Math.max(1, Math.round(num(val('st_team'), 6))), matchMinutes: Math.max(1, Math.round(num(val('st_minutes'), 15))),
     schedule: { dow: +val('st_dow'), time: val('st_time') || '21:00' },
     features: { results: checked('st_results'), scorers: checked('st_scorers') }
   };

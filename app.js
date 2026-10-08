@@ -1,7 +1,7 @@
-import { S, A, F, auth, db, ACTIONS, CHANGES, INPUTS, t, setLang, esc, av, val, num, numIn, icon, pubOf, checked, toast, errMsg, openModal, closeModal, drawModal, confirmBox, bar, spinner,
+import { S, A, F, auth, db, ACTIONS, CHANGES, INPUTS, t, setLang, esc, av, val, num, numIn, icon, pubOf, checked, versionLine, toast, errMsg, openModal, closeModal, drawModal, confirmBox, bar, spinner,
   isAdmin, gref, gcol, genCode, resizeImage, $ } from './core.js';
 import { groupTab } from './admin.js';
-import { matchesTab, sessionView } from './session.js';
+import { matchesTab, sessionView, refereeView, refAfterRender } from './session.js';
 import { statsTab, memberBody, memberView } from './stats.js';
 import { firebaseConfig } from './firebase-config.js';
 
@@ -57,8 +57,9 @@ function applyNav() {
   const n = S.nav;
   if (n.gid && n.gid !== S.gid) enterGroup(n.gid);
   if (!n.gid && S.gid) leaveGroup();
-  if (n.view === 'session' && n.sid !== S.sid) enterSession(n.sid);
-  if (n.view !== 'session' && S.sid) leaveSession();
+  const sv = n.view === 'session' || n.view === 'referee';
+  if (sv && n.sid !== S.sid) enterSession(n.sid);
+  if (!sv && S.sid) leaveSession();
   closeModal(); window.scrollTo(0, 0); render();
 }
 function unsubAll(arr) { arr.forEach(u => { try { u(); } catch (e) {} }); arr.length = 0; }
@@ -122,7 +123,8 @@ function leaveSession() { unsubAll(S.ssubs); S.sid = null; S.att = {}; S.smatche
 ACTIONS.back = () => {
   if (S.pushed > 0) { history.back(); return; }
   const n = S.nav;
-  if (n.view === 'session' || n.view === 'member') S.go({ view: 'group', gid: n.gid }, true);
+  if (n.view === 'referee') S.go({ view: 'session', gid: n.gid, sid: n.sid }, true);
+  else if (n.view === 'session' || n.view === 'member') S.go({ view: 'group', gid: n.gid }, true);
   else S.go({ view: 'groups' }, true);
 };
 
@@ -138,12 +140,13 @@ function render() {
   if (n.view === 'profile') root.innerHTML = profileView();
   else if (n.gid) root.innerHTML = groupShell();
   else root.innerHTML = groupsHome();
+  refAfterRender();
 }
 
 function loginView() {
   return `<div class="login"><img class="logo" src="icons/icon-192.png" alt=""><h1>${t('app_name')}</h1><p>${t('tagline')}</p>
     <button class="gbtn" data-act="login"><svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.6 5.9c4.4-4.1 7-10.1 7-17.6z"/><path fill="#FBBC05" d="M10.5 28.7c-.5-1.5-.8-3-.8-4.7s.3-3.2.8-4.7l-7.9-6.1C.9 16.4 0 20.1 0 24s.9 7.6 2.6 10.8l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.6-5.9c-2.1 1.4-4.9 2.3-8.3 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/></svg>${t('login_google')}</button>
-    <button class="lang" data-act="toggleLang">${S.lang === 'ar' ? 'English' : 'العربية'}</button></div>`;
+    <button class="lang" data-act="toggleLang">${S.lang === 'ar' ? 'English' : 'العربية'}</button>${versionLine()}</div>`;
 }
 ACTIONS.login = async () => {
   const p = new A.GoogleAuthProvider();
@@ -172,7 +175,7 @@ function groupsHome() {
   h += S.myGroups.map(g => `<div class="card" data-act="openGroup" data-gid="${esc(g.id)}" style="cursor:pointer;display:flex;align-items:center;gap:12px">
     ${av(g.name, '')}<div style="flex:1"><b>${esc(g.name)}</b></div><span class="mute">›</span></div>`).join('');
   h += `<button class="btn primary block" data-act="createModal">${t('create_group')}</button>
-        <button class="btn block" data-act="joinModal">${t('join_group')}</button>`;
+        <button class="btn block" data-act="joinModal">${t('join_group')}</button>` + versionLine();
   return h;
 }
 ACTIONS.install = async () => { if (!deferredInstall) return; deferredInstall.prompt(); await deferredInstall.userChoice; deferredInstall = null; render(); };
@@ -235,12 +238,13 @@ function groupShell() {
   if (!S.g) return back + spinner();
   const v = S.nav.view;
   if (v === 'session') return sessionView();
+  if (v === 'referee') return refereeView();
   if (v === 'member') return memberView(S.nav.uid);
   const tabs = [['matches', 'calendar', t('tab_matches')], ['rank', 'trophy', t('tab_rank')], ['me', 'user', t('tab_me')], ['group', isAdmin() ? 'settings' : 'info', isAdmin() ? t('tab_admin') : t('tab_group')]];
   let body;
   if (S.tab === 'rank') body = statsTab();
   else if (S.tab === 'me') body = `<div class="row" style="margin:12px 16px 0"><button class="btn" data-act="openProfile">${t('edit_profile')}</button></div>` + memberBody(S.user.uid);
-  else if (S.tab === 'group') body = groupTab();
+  else if (S.tab === 'group') body = groupTab() + versionLine();
   else body = matchesTab();
   return bar(S.g.name, true) + `<div>${body}</div><div class="nav"><div>${tabs.map(([k, ic, l]) => `<button class="${S.tab === k ? 'on' : ''}" data-act="tab" data-k="${k}">${icon(ic)}${l}</button>`).join('')}</div></div>`;
 }

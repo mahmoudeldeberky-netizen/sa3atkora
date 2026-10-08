@@ -1,6 +1,6 @@
 import { S, F, db, ACTIONS, CHANGES, INPUTS, t, esc, av, val, num, checked, money, fmtNum, dt, tsMs, toLocalInput, toast, openModal, closeModal, drawModal, confirmBox,
   numIn, dtIn, icon, bar, spinner, isAdmin, gref, gcol, addAudit, addLedger, bumpFund, balanceOf, slotCount, playersOf, attMapFor, myName, photoOf, feat, download } from './core.js';
-import { matchModal } from './stats.js';
+import { matchModal, eventLine } from './stats.js';
 
 const sessOf = id => S.sessions.find(x => x.id === (id || S.sid));
 const startMs = s => tsMs(s.startsAt);
@@ -278,9 +278,9 @@ function teamsAndMatches(s) {
       ${tm.players.map(id => `<div class="small">${esc(nm(id))}</div>`).join('')}</div>`).join('')}</div></div>`;
   }
   h += `<div class="card">${ms.length ? ms.map(m => `<div class="li" data-act="openMatch" data-id="${esc(m.id)}" style="cursor:pointer">
-    <div><b>${t('match')} ${m.no || ''}</b></div><b dir="ltr">${esc(m.teamA?.name)} ${m.scoreA} - ${m.scoreB} ${esc(m.teamB?.name)}</b>
+    <div><b>${t('match')} ${m.no || ''}</b>${m.status === 'live' ? ` <span class="tag warn">${t('live')}</span>` : ''}</div><b dir="ltr">${esc(m.teamA?.name)} ${m.scoreA} - ${m.scoreB} ${esc(m.teamB?.name)}</b>
     ${m.pens ? `<span class="tag gold" dir="ltr">${m.pens.a}-${m.pens.b}</span>` : ''}<span class="mute">›</span></div>`).join('') : `<div class="empty">${t('no_matches')}</div>`}
-    ${adm ? `<div class="row"><button class="btn" data-act="splitTeams">${t('split_teams')}</button><button class="btn primary" data-act="newMatch">${t('new_match')}</button></div>` : ''}</div>`;
+    ${adm ? `<div class="row"><button class="btn" data-act="splitTeams">${t('split_teams')}</button><button class="btn primary" data-act="refSetup">${t('start_live')}</button><button class="btn" data-act="newMatch">${t('new_match')}</button></div>` : ''}</div>`;
   return h;
 }
 
@@ -349,7 +349,7 @@ ACTIONS.newMatch = () => {
   openModal(editorHtml);
 };
 ACTIONS.editMatch = el => {
-  const m = S.smatches.find(x => x.id === el.dataset.id) || S.stats?.matches.find(x => x.id === el.dataset.id); if (!m) return;
+  const m = S.smatches.find(x => x.id === el.dataset.id) || S.stats?.matches.find(x => x.id === el.dataset.id); if (!m || m.status === 'live') return;
   const assign = {}; (m.teamA?.players || []).forEach(id => { assign[id] = 'A'; }); (m.teamB?.players || []).forEach(id => { assign[id] = 'B'; });
   const ids = new Set(m.players || []);
   const pl = (m.players || []).map(id => ({ id, name: m.names?.[id] || S.members[id]?.name || '—' }));
@@ -442,3 +442,209 @@ ACTIONS.meDelete = () => confirmBox(t('delete_match_q'), async () => {
   addAudit(b, 'match_delete', `#${E.no}`);
   await b.commit(); S.stats = null; toast(t('saved'));
 }, true);
+
+// =============== referee mode (stopwatch + live events) ===============
+let refTimer = null, audioCtx = null, wake = null, firedKey = '', R = null;
+const liveOf = id => S.smatches.find(m => m.id === id);
+const elapsedOf = m => (m.elapsedMs || 0) + (m.running ? Date.now() - (m.lastStart || Date.now()) : 0);
+const remainingMs = m => (m.durationSec || 900) * 1000 - elapsedOf(m);
+const mmss = ms => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; };
+const clockCls = m => (m.status !== 'live' ? '' : (!m.running ? 'pause' : (remainingMs(m) <= 60000 ? 'low' : 'run')));
+const evId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+
+function ensureAudio() {
+  try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); } catch (e) {}
+}
+function beep(n = 3) {
+  try { navigator.vibrate && navigator.vibrate([300, 150, 300, 150, 500]); } catch (e) {}
+  if (!audioCtx) return;
+  for (let i = 0; i < n; i++) {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain(), at = audioCtx.currentTime + i * 0.4;
+    o.frequency.value = i === n - 1 ? 1100 : 800; o.connect(g); g.connect(audioCtx.destination);
+    g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(0.4, at + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, at + 0.3);
+    o.start(at); o.stop(at + 0.32);
+  }
+}
+function derive(events) {
+  let scoreA = 0, scoreB = 0; const goals = [], saves = {};
+  events.forEach(e => {
+    if (e.type === 'goal') { if (e.team === 'A') scoreA++; else scoreB++; goals.push({ team: e.team, uid: e.uid, assist: e.assist || '', penalty: !!e.penalty, og: !!e.og, t: e.t || 0 }); }
+    else if (e.type === 'save') saves[e.uid] = (saves[e.uid] || 0) + 1;
+  });
+  return { scoreA, scoreB, goals, saves };
+}
+async function pushEvents(m, fn) {
+  const events = fn([...(m.events || [])]);
+  await F.updateDoc(gref('matches', m.id), { events, ...derive(events), updatedAt: F.serverTimestamp() });
+}
+const patchLive = (id, data) => F.updateDoc(gref('matches', id), { ...data, updatedAt: F.serverTimestamp() });
+
+function refTick() {
+  const m = S.nav.view === 'referee' && liveOf(S.nav.mid); if (!m) return;
+  const el = document.getElementById('ref_clock');
+  if (el) { el.textContent = mmss(m.status === 'live' ? remainingMs(m) : 0); el.className = 'clock ' + clockCls(m); }
+  const key = m.id + ':' + m.durationSec;
+  if (m.status === 'live' && m.running && remainingMs(m) <= 0 && firedKey !== key) {
+    firedKey = key; beep();
+    if (isAdmin()) patchLive(m.id, { running: false, elapsedMs: (m.durationSec || 900) * 1000, lastStart: 0, timeUp: true }).catch(() => {});
+  }
+}
+export function refAfterRender() {
+  if (S.nav.view === 'referee') {
+    if (!refTimer) refTimer = setInterval(refTick, 250);
+    if (!wake && navigator.wakeLock) navigator.wakeLock.request('screen').then(l => { wake = l; l.addEventListener('release', () => { wake = null; }); }).catch(() => {});
+  } else {
+    if (refTimer) { clearInterval(refTimer); refTimer = null; }
+    if (wake) { try { wake.release(); } catch (e) {} wake = null; }
+  }
+}
+
+// ---- setup ----
+ACTIONS.refSetup = () => {
+  const s = sessOf(), pl = playersOf(S.att);
+  if (pl.length < 2) { toast(t('need_players')); return; }
+  E = { id: null, no: S.smatches.reduce((m, x) => Math.max(m, x.no || 0), 0) + 1, a: 'A', b: 'B', ia: 0, ib: 1, assign: {}, scoreA: 0, scoreB: 0, goals: [], saves: {}, pens: null,
+    pool: pl.map(p => ({ id: p.uid, name: p.name })), mins: S.g.matchMinutes ?? 15 };
+  if (s.teams?.length >= 2) fillFromTeams();
+  openModal(refSetupHtml);
+};
+function refSetupHtml() {
+  const s = sessOf(), tms = s?.teams || [];
+  const tOpt = sel => tms.map((tm, i) => `<option value="${i}" ${sel === i ? 'selected' : ''}>${esc(tm.name)}</option>`).join('');
+  return `<h2>${t('start_live')}</h2>
+  ${tms.length >= 2 ? `<div class="grid2"><div><label>${t('team')} A</label><select data-chg="meTeamA">${tOpt(E.ia)}</select></div><div><label>${t('team')} B</label><select data-chg="meTeamB">${tOpt(E.ib)}</select></div></div>` : ''}
+  <label>${t('match_minutes')}</label>${numIn('rf_min', E.mins)}
+  <b style="display:block;margin-top:14px">${t('lineups')}</b>
+  ${E.pool.map(p => `<div class="li"><div>${esc(p.name)}</div><select style="width:110px" data-chg="meAssign" data-id="${esc(p.id)}">
+    <option value="">-</option><option value="A" ${teamOf(p.id) === 'A' ? 'selected' : ''}>${t('team')} ${esc(E.a)}</option><option value="B" ${teamOf(p.id) === 'B' ? 'selected' : ''}>${t('team')} ${esc(E.b)}</option></select></div>`).join('')}
+  <div class="row" style="margin-top:16px"><button class="btn primary" data-act="refStart">${t('start_live')}</button><button class="btn" data-act="closeModal">${t('cancel')}</button></div>`;
+}
+ACTIONS.refStart = async () => {
+  const as = assigned();
+  if (!as.some(p => teamOf(p.id) === 'A') || !as.some(p => teamOf(p.id) === 'B')) { toast(t('need_lineups')); return; }
+  const mins = Math.max(1, Math.round(num(val('rf_min'), 15)));
+  ensureAudio();
+  const ref = F.doc(gcol('matches')), b = F.writeBatch(db), names = {};
+  as.forEach(p => { names[p.id] = p.name; });
+  b.set(ref, {
+    sid: S.sid, no: E.no, date: startMs(sessOf()), status: 'live', durationSec: mins * 60, elapsedMs: 0, running: false, lastStart: 0, timeUp: false,
+    teamA: { name: E.a, players: as.filter(p => teamOf(p.id) === 'A').map(p => p.id) }, teamB: { name: E.b, players: as.filter(p => teamOf(p.id) === 'B').map(p => p.id) },
+    scoreA: 0, scoreB: 0, pens: null, goals: [], saves: {}, events: [], players: as.map(p => p.id), names, by: S.user.uid, createdAt: F.serverTimestamp(), updatedAt: F.serverTimestamp()
+  });
+  addAudit(b, 'match_live', `#${E.no} ${E.a} - ${E.b}`);
+  await b.commit();
+  S.go({ view: 'referee', gid: S.gid, sid: S.sid, mid: ref.id });
+};
+
+// ---- console ----
+export function refereeView() {
+  const m = liveOf(S.nav.mid);
+  if (!m) return bar(t('match'), true) + spinner();
+  const adm = isAdmin(), live = m.status === 'live';
+  const pl = id => esc(m.names?.[id] || '-');
+  const panel = k => {
+    const tm = k === 'A' ? m.teamA : m.teamB;
+    const b = (type, label, cls = '') => `<button class="btn ${cls}" data-act="refEv" data-team="${k}" data-type="${type}">${label}</button>`;
+    return `<div class="tile" style="text-align:center"><b>${t('team')} ${esc(tm.name)}</b><div class="big" dir="ltr">${k === 'A' ? m.scoreA : m.scoreB}</div>
+      ${adm && live ? `<div style="display:grid;gap:6px;margin-top:8px">${b('goal', t('goal_btn'), 'primary')}${b('yellow', t('yellow_btn'))}${b('red', t('red_btn'))}${b('save', t('save_btn'))}</div>` : ''}</div>`;
+  };
+  const events = [...(m.events || [])].reverse();
+  let h = bar(`${t('match')} ${m.no || ''}`, true, live ? `<span class="tag warn" style="background:#fff;margin-inline-end:8px">${t('live')}</span>` : '');
+  h += `<div class="card" style="text-align:center"><div id="ref_clock" class="clock ${clockCls(m)}" dir="ltr">${mmss(live ? remainingMs(m) : 0)}</div>
+    <div class="mute small">${live ? (m.timeUp ? t('time_up') : (m.running ? t('running') : t('paused'))) : t('match_ended')} · ${t('match_minutes')}: ${fmtNum((m.durationSec || 900) / 60)}</div>
+    ${adm && live ? `<div class="row"><button class="btn primary" data-act="refToggle">${m.running ? t('pause') : (m.elapsedMs ? t('resume') : t('kickoff'))}</button>
+      <button class="btn" data-act="refAddMin">${t('add_minute')}</button></div>` : ''}</div>`;
+  h += `<div class="grid2" style="margin:12px 16px">${panel('A')}${panel('B')}</div>`;
+  if (m.scoreA === m.scoreB && (m.pens || (adm && live))) {
+    h += `<div class="card"><b>${t('shootout')}</b>${m.pens ? `<div class="grid2" style="margin-top:8px">${['a', 'b'].map(k => `<div style="text-align:center"><div class="small mute">${t('team')} ${esc(k === 'a' ? m.teamA.name : m.teamB.name)}</div>
+      <div style="display:flex;justify-content:center;align-items:center;gap:8px">${adm && live ? `<button class="btn sm" data-act="refPen" data-k="${k}" data-d="-1">-</button>` : ''}<b class="big" dir="ltr">${m.pens[k]}</b>${adm && live ? `<button class="btn sm" data-act="refPen" data-k="${k}" data-d="1">+</button>` : ''}</div></div>`).join('')}</div>` : ''}
+      ${adm && live ? `<div class="row"><button class="btn" data-act="refPens">${m.pens ? t('remove_shootout') : t('start_shootout')}</button></div>` : ''}</div>`;
+  }
+  h += `<h3>${t('events')}</h3><div class="card">${events.length ? events.map(e => eventLine(m, e, adm && live)).join('') : `<div class="empty">${t('no_events')}</div>`}</div>`;
+  if (adm && live) h += `<div class="row" style="margin:12px 16px"><button class="btn primary" data-act="refEnd">${t('end_match')}</button><button class="btn danger" data-act="refAbort">${t('abort_match')}</button></div>`;
+  if (!adm && live) h += `<div class="mute small" style="text-align:center;padding:8px 16px">${t('ref_readonly_hint')}</div>`;
+  return h;
+}
+
+// ---- actions ----
+ACTIONS.refToggle = async () => {
+  const m = liveOf(S.nav.mid); if (!m || m.status !== 'live') return; ensureAudio();
+  if (m.running) await patchLive(m.id, { running: false, elapsedMs: elapsedOf(m), lastStart: 0 });
+  else { if (remainingMs(m) <= 0) { toast(t('time_up')); return; } await patchLive(m.id, { running: true, lastStart: Date.now(), timeUp: false }); }
+};
+ACTIONS.refAddMin = async () => {
+  const m = liveOf(S.nav.mid); if (!m || m.status !== 'live') return;
+  await patchLive(m.id, { durationSec: (m.durationSec || 900) + 60, timeUp: false });
+};
+ACTIONS.refPens = async () => {
+  const m = liveOf(S.nav.mid); if (!m) return;
+  await patchLive(m.id, { pens: m.pens ? null : { a: 0, b: 0 } });
+};
+ACTIONS.refPen = async el => {
+  const m = liveOf(S.nav.mid); if (!m || !m.pens) return;
+  const k = el.dataset.k; await patchLive(m.id, { pens: { ...m.pens, [k]: Math.max(0, m.pens[k] + +el.dataset.d) } });
+};
+ACTIONS.refEnd = () => confirmBox(t('end_match_q'), async () => {
+  const m = liveOf(S.nav.mid); if (!m) return;
+  const b = F.writeBatch(db);
+  b.update(gref('matches', m.id), { status: 'done', running: false, elapsedMs: elapsedOf(m), lastStart: 0, pens: m.scoreA === m.scoreB ? (m.pens || null) : null, endedAt: F.serverTimestamp(), updatedAt: F.serverTimestamp() });
+  addAudit(b, 'match_end', `#${m.no} ${m.teamA.name} ${m.scoreA}-${m.scoreB} ${m.teamB.name}`);
+  await b.commit(); S.stats = null;
+  S.go({ view: 'session', gid: S.gid, sid: S.sid }, true);
+});
+ACTIONS.refAbort = () => confirmBox(t('abort_match_q'), async () => {
+  const m = liveOf(S.nav.mid); if (!m) return;
+  const b = F.writeBatch(db);
+  b.delete(gref('matches', m.id)); addAudit(b, 'match_abort', `#${m.no}`);
+  await b.commit(); S.go({ view: 'session', gid: S.gid, sid: S.sid }, true);
+}, true);
+ACTIONS.refDelEv = el => confirmBox(t('delete_event_q'), async () => {
+  const m = liveOf(S.nav.mid); if (!m) return;
+  await pushEvents(m, ev => ev.filter(e => e.id !== el.dataset.id));
+}, true);
+
+// ---- event sheets ----
+ACTIONS.refEv = el => {
+  const m = liveOf(S.nav.mid); if (!m || m.status !== 'live') return;
+  R = { team: el.dataset.team, type: el.dataset.type, og: false, penalty: false, step: 'pick', scorer: '' };
+  openModal(refEvHtml);
+};
+function refEvHtml() {
+  const m = liveOf(S.nav.mid), tm = R.team === 'A' ? m.teamA : m.teamB, op = R.team === 'A' ? m.teamB : m.teamA;
+  const yc = id => (m.events || []).filter(e => e.type === 'yellow' && e.uid === id).length;
+  const btn = (id, extra = '') => `<button class="btn block" style="width:100%;margin:6px 0;justify-content:space-between" data-act="refPick" data-id="${esc(id)}"><span>${esc(m.names?.[id] || '-')}</span>${extra}</button>`;
+  let body;
+  if (R.type === 'goal' && R.step === 'assist') {
+    body = `<h2>${t('pick_assist')}</h2>${tm.players.filter(id => id !== R.scorer).map(id => btn(id)).join('')}
+      <button class="btn block" style="width:100%;margin:6px 0" data-act="refNoAssist">${t('no_assist')}</button>`;
+  } else if (R.type === 'goal') {
+    body = `<h2>${t('goal_btn')} - ${t('team')} ${esc(tm.name)}</h2>
+      <div class="row" style="margin-top:0"><button class="btn ${R.penalty ? 'primary' : ''}" data-act="refTog" data-k="penalty">${t('penalty')}</button>
+      <button class="btn ${R.og ? 'primary' : ''}" data-act="refTog" data-k="og">${t('own_goal')}</button></div>
+      <h3 style="margin:12px 0 4px">${t('pick_scorer')}${R.og ? ` (${t('team')} ${esc(op.name)})` : ''}</h3>${(R.og ? op : tm).players.map(id => btn(id)).join('')}`;
+  } else {
+    const title = { yellow: t('yellow_btn'), red: t('red_btn'), save: t('save_btn') }[R.type];
+    body = `<h2>${title} - ${t('team')} ${esc(tm.name)}</h2>${tm.players.map(id => btn(id, R.type === 'yellow' && yc(id) ? `<span class="tag gold">${t('yellow_btn')} x${yc(id)}</span>` : '')).join('')}`;
+  }
+  return body + `<div class="row"><button class="btn" data-act="closeModal">${t('cancel')}</button></div>`;
+}
+ACTIONS.refTog = el => { const k = el.dataset.k; R[k] = !R[k]; if (k === 'og' && R.og) R.penalty = false; if (k === 'penalty' && R.penalty) R.og = false; redraw(); };
+async function commitEv(extra) {
+  const m = liveOf(S.nav.mid); if (!m) return;
+  const t0 = Math.floor(elapsedOf(m) / 1000);
+  const add = [{ id: evId(), type: R.type, team: R.team, t: t0, uid: '', assist: '', penalty: false, og: false, ...extra }];
+  if (R.type === 'yellow' && (m.events || []).some(e => e.type === 'yellow' && e.uid === extra.uid)) add.push({ id: evId(), type: 'red', team: R.team, t: t0, uid: extra.uid, second: true });
+  await pushEvents(m, ev => [...ev, ...add]);
+  closeModal(); try { navigator.vibrate && navigator.vibrate(60); } catch (e) {}
+}
+ACTIONS.refPick = async el => {
+  const id = el.dataset.id;
+  if (R.type === 'goal') {
+    if (R.step === 'assist') return commitEv({ uid: R.scorer, assist: id, penalty: R.penalty, og: R.og });
+    R.scorer = id;
+    if (R.og || R.penalty) return commitEv({ uid: id, penalty: R.penalty, og: R.og });
+    R.step = 'assist'; redraw(); return;
+  }
+  return commitEv({ uid: id });
+};
+ACTIONS.refNoAssist = () => commitEv({ uid: R.scorer, assist: '', penalty: R.penalty, og: R.og });
