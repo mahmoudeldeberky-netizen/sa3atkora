@@ -1,4 +1,4 @@
-const CACHE = 'sa3et-kora-v2';
+const CACHE = 'sa3et-kora-v3';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'core.js', 'admin.js', 'session.js', 'stats.js', 'i18n.js', 'firebase-config.js', 'manifest.json', 'icons/icon-192.png'];
 
 self.addEventListener('install', e => {

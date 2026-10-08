@@ -1,5 +1,5 @@
 import { S, F, db, ACTIONS, CHANGES, INPUTS, t, esc, av, val, num, checked, money, fmtNum, dt, tsMs, toLocalInput, toast, openModal, closeModal, drawModal, confirmBox,
-  numIn, dtIn, bar, spinner, isAdmin, gref, gcol, addAudit, addLedger, bumpFund, balanceOf, slotCount, playersOf, attMapFor, myName, photoOf, feat, download } from './core.js';
+  numIn, dtIn, icon, bar, spinner, isAdmin, gref, gcol, addAudit, addLedger, bumpFund, balanceOf, slotCount, playersOf, attMapFor, myName, photoOf, feat, download } from './core.js';
 import { matchModal } from './stats.js';
 
 const sessOf = id => S.sessions.find(x => x.id === (id || S.sid));
@@ -12,7 +12,7 @@ export function matchesTab() {
   let h = `<div class="card" style="display:flex;justify-content:space-between;align-items:center">
     <div><div class="mute small">${t('my_balance')}</div><div class="big ${bal < 0 ? 'neg' : 'pos'}" dir="ltr">${fmtNum(bal)} <span class="small">${esc(S.g.currency || '')}</span></div></div>
     <div style="text-align:end"><div class="mute small">${t('fund')}</div><b dir="ltr">${fmtNum(S.g.fund || 0)}</b></div></div>`;
-  if (isAdmin()) h += `<button class="btn primary block" data-act="sessionForm">＋ ${t('new_session')}</button>`;
+  if (isAdmin()) h += `<button class="btn primary block" data-act="sessionForm">${t('new_session')}</button>`;
   const open = S.sessions.filter(s => s.status === 'open').sort((a, b) => startMs(a) - startMs(b));
   const rest = S.sessions.filter(s => s.status !== 'open').sort((a, b) => startMs(b) - startMs(a));
   if (!S.sessions.length) h += `<div class="empty">${t('no_sessions')}</div>`;
@@ -26,7 +26,7 @@ function sessionCard(s) {
   const open = s.status === 'open', past = Date.now() > startMs(s);
   const n = slotCount(att);
   let h = `<div class="card"><div data-act="openSession" data-id="${esc(s.id)}" style="cursor:pointer">
-    <div class="mhead"><div><div class="when">${dt(startMs(s))}</div>${s.location ? `<div class="mute small">📍 ${esc(s.location)}</div>` : ''}</div>
+    <div class="mhead"><div><div class="when">${dt(startMs(s))}</div>${s.location ? `<div class="mute small">${t('location')}: ${esc(s.location)}</div>` : ''}</div>
     <span class="fee">${money(s.fee)}</span></div>`;
   if (open) {
     h += `<div class="meter"><i style="width:${Math.min(100, n / s.maxPlayers * 100)}%"></i></div>
@@ -36,8 +36,8 @@ function sessionCard(s) {
   h += `</div>`;
   if (open && !past) {
     const r = mine?.rsvp;
-    h += `<div class="row"><button class="btn ${r === 'yes' ? 'primary' : ''}" data-act="rsvp" data-sid="${esc(s.id)}" data-v="yes">✅ ${t('im_in')}</button>
-      <button class="btn ${r === 'no' ? 'dark' : ''}" data-act="rsvp" data-sid="${esc(s.id)}" data-v="no">❌ ${t('im_out')}</button></div>
+    h += `<div class="row"><button class="btn ${r === 'yes' ? 'primary' : ''}" data-act="rsvp" data-sid="${esc(s.id)}" data-v="yes">${t('im_in')}</button>
+      <button class="btn ${r === 'no' ? 'dark' : ''}" data-act="rsvp" data-sid="${esc(s.id)}" data-v="no">${t('im_out')}</button></div>
       ${r === 'waitlist' ? `<div class="tag gold" style="margin-top:8px">${t('waitlisted')}</div>` : ''}`;
   }
   return h + `</div>`;
@@ -83,7 +83,7 @@ export function sessionView() {
   const deadline = startMs(s) - s.cancelHours * 3600e3;
   let h = bar(dt(startMs(s), { weekday: 'long', day: 'numeric', month: 'short' }), true);
   h += `<div class="card"><div class="mhead"><div><div class="when">${dt(startMs(s))}</div>
-    ${s.location ? `<div class="mute small">📍 ${esc(s.location)}</div>` : ''}
+    ${s.location ? `<div class="mute small">${t('location')}: ${esc(s.location)}</div>` : ''}
     ${s.note ? `<div class="small" style="margin-top:6px">${esc(s.note)}</div>` : ''}</div><span class="fee">${money(s.fee)}</span></div>
     <div class="mute small" style="margin-top:8px">${t('free_cancel_until', { time: dt(deadline) })}</div>
     <div style="margin-top:8px"><span class="tag ${s.status === 'cancelled' ? 'warn' : ''}">${t('st_' + s.status)}</span>
@@ -92,15 +92,15 @@ export function sessionView() {
   if (open && Date.now() < startMs(s)) {
     const r = mine?.rsvp;
     h += `<div class="card"><b>${t('your_status')}: ${r ? t('rs_' + r) : t('rs_none')}</b>
-      <div class="row"><button class="btn ${r === 'yes' ? 'primary' : ''}" data-act="rsvp" data-sid="${esc(s.id)}" data-v="yes">✅ ${t('im_in')}</button>
-      <button class="btn ${r === 'no' ? 'dark' : ''}" data-act="rsvp" data-sid="${esc(s.id)}" data-v="no">❌ ${t('im_out')}</button></div>
-      ${r === 'yes' && !mine?.sub ? `<div class="row"><button class="btn" data-act="subModal">🔁 ${t('send_sub')}</button></div>` : ''}
-      ${mine?.sub ? `<div class="mute small" style="margin-top:8px">🔁 ${esc(mine.sub.name)} — ${t('sub_' + mine.sub.status)}</div>` : ''}</div>`;
+      <div class="row"><button class="btn ${r === 'yes' ? 'primary' : ''}" data-act="rsvp" data-sid="${esc(s.id)}" data-v="yes">${t('im_in')}</button>
+      <button class="btn ${r === 'no' ? 'dark' : ''}" data-act="rsvp" data-sid="${esc(s.id)}" data-v="no">${t('im_out')}</button></div>
+      ${r === 'yes' && !mine?.sub ? `<div class="row"><button class="btn" data-act="subModal">${t('send_sub')}</button></div>` : ''}
+      ${mine?.sub ? `<div class="mute small" style="margin-top:8px">${t('substitute')}: ${esc(mine.sub.name)} — ${t('sub_' + mine.sub.status)}</div>` : ''}</div>`;
   }
 
   const row = a => {
     const sub = a.sub;
-    const subLine = sub ? `<div class="mute small">🔁 ${esc(sub.name)} — ${t('sub_' + sub.status)}</div>` : '';
+    const subLine = sub ? `<div class="mute small">${t('substitute')}: ${esc(sub.name)} — ${t('sub_' + sub.status)}</div>` : '';
     return `<div class="li">${av(a.name, photoOf(a.uid))}<div><b>${esc(a.name)}</b>
       ${a.guest ? `<span class="tag gold">${t('guest')}</span>` : ''}${a.excused ? `<span class="tag">${t('excused')}</span>` : ''}${subLine}</div>
       ${adm ? `<button class="btn sm" data-act="attMenu" data-id="${esc(a.uid)}">⋯</button>` : ''}</div>`;
@@ -110,13 +110,13 @@ export function sessionView() {
     ${adm ? `<button class="btn primary sm" data-act="attSet" data-id="${esc(a.uid)}" data-v="yes">${t('approve')}</button>` : ''}</div>`).join('')}</div>`;
   if (no.length) h += `<h3>${t('not_coming')} (${no.length})</h3><div class="card">${no.map(a => `<div class="li">${av(a.name, photoOf(a.uid))}<div class="mute">${esc(a.name)}</div></div>`).join('')}</div>`;
 
-  h += `<div class="row" style="margin:12px 16px"><button class="btn" data-act="ics">📅 ${t('add_calendar')}</button></div>`;
+  h += `<div class="row" style="margin:12px 16px"><button class="btn" data-act="ics">${t('add_calendar')}</button></div>`;
 
   if (adm) {
     h += `<h3>${t('admin_tools')}</h3><div class="card"><div class="row" style="margin-top:0">
-      ${open ? `<button class="btn" data-act="addPlayerModal">＋ ${t('add_player')}</button><button class="btn" data-act="addGuestModal">＋ ${t('add_guest')}</button>
-      <button class="btn" data-act="sessionForm" data-id="${esc(s.id)}">✏️ ${t('edit')}</button>
-      <button class="btn primary" data-act="finalize">✔ ${t('finalize')}</button>
+      ${open ? `<button class="btn" data-act="addPlayerModal">${t('add_player')}</button><button class="btn" data-act="addGuestModal">${t('add_guest')}</button>
+      <button class="btn" data-act="sessionForm" data-id="${esc(s.id)}">${t('edit')}</button>
+      <button class="btn primary" data-act="finalize">${t('finalize')}</button>
       <button class="btn danger" data-act="cancelSession">${t('cancel_session')}</button>` : ''}
       ${s.status === 'done' && s.summary ? `<div class="mute small">${t('summary_line', { n: s.summary.charged, fee: fmtNum(s.summary.fee), cost: fmtNum(s.summary.cost), guests: fmtNum(s.summary.guests) })}</div>` : ''}
     </div></div>`;
@@ -261,7 +261,7 @@ ACTIONS.doFinalize = async () => {
 ACTIONS.ics = () => {
   const s = sessOf(), z = ms => new Date(ms).toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
   const txt = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//sa3et-kora//EN', 'BEGIN:VEVENT', `UID:${s.id}@sa3et-kora`, `DTSTAMP:${z(Date.now())}`,
-    `DTSTART:${z(startMs(s))}`, `DTEND:${z(startMs(s) + (s.durationMin || 60) * 60000)}`, `SUMMARY:⚽ ${S.g.name}`, s.location ? `LOCATION:${s.location}` : '',
+    `DTSTART:${z(startMs(s))}`, `DTEND:${z(startMs(s) + (s.durationMin || 60) * 60000)}`, `SUMMARY:${S.g.name}`, s.location ? `LOCATION:${s.location}` : '',
     'BEGIN:VALARM', 'TRIGGER:-PT2H', 'ACTION:DISPLAY', 'DESCRIPTION:Football', 'END:VALARM', 'BEGIN:VALARM', 'TRIGGER:-P1D', 'ACTION:DISPLAY', 'DESCRIPTION:Football', 'END:VALARM',
     'END:VEVENT', 'END:VCALENDAR'].filter(Boolean).join('\r\n');
   download('football.ics', txt, 'text/calendar;charset=utf-8');
@@ -280,7 +280,7 @@ function teamsAndMatches(s) {
   h += `<div class="card">${ms.length ? ms.map(m => `<div class="li" data-act="openMatch" data-id="${esc(m.id)}" style="cursor:pointer">
     <div><b>${t('match')} ${m.no || ''}</b></div><b dir="ltr">${esc(m.teamA?.name)} ${m.scoreA} - ${m.scoreB} ${esc(m.teamB?.name)}</b>
     ${m.pens ? `<span class="tag gold" dir="ltr">${m.pens.a}-${m.pens.b}</span>` : ''}<span class="mute">›</span></div>`).join('') : `<div class="empty">${t('no_matches')}</div>`}
-    ${adm ? `<div class="row"><button class="btn" data-act="splitTeams">🎲 ${t('split_teams')}</button><button class="btn primary" data-act="newMatch">＋ ${t('new_match')}</button></div>` : ''}</div>`;
+    ${adm ? `<div class="row"><button class="btn" data-act="splitTeams">${t('split_teams')}</button><button class="btn primary" data-act="newMatch">${t('new_match')}</button></div>` : ''}</div>`;
   return h;
 }
 
@@ -293,7 +293,7 @@ function splitHtml() {
   const pl = playersOf(S.att);
   return `<h2>${t('split_teams')}</h2>
   <label>${t('num_teams')}</label><select data-chg="tN">${[2, 3, 4, 5, 6].map(n => `<option ${T.n === n ? 'selected' : ''}>${n}</option>`).join('')}</select>
-  <div class="row"><button class="btn" data-act="reshuffle">🎲 ${t('reshuffle')}</button></div>
+  <div class="row"><button class="btn" data-act="reshuffle">${t('reshuffle')}</button></div>
   ${Array.from({ length: T.n }, (_, i) => `<div class="mute small" style="margin-top:12px"><b>${t('team')} ${letters[i]}</b> (${pl.filter(p => T.assign[p.uid] === i).length})</div>`).join('')}
   <div>${pl.map(p => `<div class="li"><div><b>${esc(p.name)}</b></div>
     <select style="width:90px" data-chg="tAssign" data-id="${esc(p.uid)}">${Array.from({ length: T.n }, (_, i) => `<option value="${i}" ${T.assign[p.uid] === i ? 'selected' : ''}>${letters[i]}</option>`).join('')}</select></div>`).join('')}</div>
@@ -364,7 +364,7 @@ function editorHtml() {
   const as = assigned();
   const tOpt = (sel) => tms.map((tm, i) => `<option value="${i}" ${sel === i ? 'selected' : ''}>${esc(tm.name)}</option>`).join('');
   const stepper = (k, label, score) => `<div style="text-align:center;flex:1"><div class="small mute">${t('team')} ${esc(label)}</div>
-    <div style="display:flex;align-items:center;justify-content:center;gap:8px"><button class="btn sm" data-act="meScore" data-k="${k}" data-d="-1">−</button><b class="big" dir="ltr">${score}</b><button class="btn sm" data-act="meScore" data-k="${k}" data-d="1">＋</button></div></div>`;
+    <div style="display:flex;align-items:center;justify-content:center;gap:8px"><button class="btn sm" data-act="meScore" data-k="${k}" data-d="-1">-</button><b class="big" dir="ltr">${score}</b><button class="btn sm" data-act="meScore" data-k="${k}" data-d="1">+</button></div></div>`;
   const pOpts = as.map(p => `<option value="${esc(p.id)}">${esc(p.name)} (${esc(teamOf(p.id) === 'A' ? E.a : E.b)})</option>`).join('');
   return `<h2>${t('match')} ${E.no}</h2>
   ${!E.id && tms.length >= 2 ? `<div class="grid2"><div><label>${t('team')} A</label><select data-chg="meTeamA">${tOpt(E.ia)}</select></div><div><label>${t('team')} B</label><select data-chg="meTeamB">${tOpt(E.ib)}</select></div></div>` : ''}
@@ -375,16 +375,16 @@ function editorHtml() {
   ${E.pool.map(p => `<div class="li"><div>${esc(p.name)}</div><select style="width:110px" data-chg="meAssign" data-id="${esc(p.id)}">
     <option value="">—</option><option value="A" ${teamOf(p.id) === 'A' ? 'selected' : ''}>${t('team')} ${esc(E.a)}</option><option value="B" ${teamOf(p.id) === 'B' ? 'selected' : ''}>${t('team')} ${esc(E.b)}</option></select></div>`).join('')}
   ${feat('scorers') && as.length ? `<h3 style="margin:16px 0 4px">${t('goals')}</h3>
-    ${E.goals.map((g, i) => `<div class="li"><div>⚽ <b>${pn(g.uid)}</b>${g.og ? ` <span class="tag warn">${t('own_goal')}</span>` : ''}${g.penalty ? ` <span class="tag gold">${t('penalty')}</span>` : ''}
-      ${g.assist ? `<div class="mute small">🅰️ ${pn(g.assist)}</div>` : ''}</div><span class="tag">${esc(g.team === 'A' ? E.a : E.b)}</span><button class="btn sm danger" data-act="meDelGoal" data-i="${i}">✕</button></div>`).join('')}
+    ${E.goals.map((g, i) => `<div class="li"><div><b>${pn(g.uid)}</b>${g.og ? ` <span class="tag warn">${t('own_goal')}</span>` : ''}${g.penalty ? ` <span class="tag gold">${t('penalty')}</span>` : ''}
+      ${g.assist ? `<div class="mute small">${t('assist_by')}: ${pn(g.assist)}</div>` : ''}</div><span class="tag">${esc(g.team === 'A' ? E.a : E.b)}</span><button class="btn sm danger" data-act="meDelGoal" data-i="${i}">${icon('x')}</button></div>`).join('')}
     <div class="card" style="margin:8px 0"><label style="margin-top:0">${t('scorer')}</label><select id="mg_sc">${pOpts}</select>
     <label>${t('assist')}</label><select id="mg_as"><option value="">—</option>${pOpts}</select>
     <div class="chk"><input type="checkbox" id="mg_pen"><label for="mg_pen">${t('penalty')}</label></div>
     <div class="chk"><input type="checkbox" id="mg_og"><label for="mg_og">${t('own_goal')}</label></div>
-    <button class="btn primary" data-act="meAddGoal">＋ ${t('add_goal')}</button></div>
+    <button class="btn primary" data-act="meAddGoal">${t('add_goal')}</button></div>
     <h3 style="margin:16px 0 4px">${t('saves')}</h3>
-    ${Object.entries(E.saves).map(([id, n]) => `<div class="li"><div>🧤 ${pn(id)}</div><b>${n}</b><button class="btn sm danger" data-act="meDelSave" data-id="${esc(id)}">✕</button></div>`).join('')}
-    <div class="row"><select id="mg_gk" style="flex:2">${pOpts}</select><button class="btn" data-act="meAddSave">＋ ${t('add_save')}</button></div>` : ''}
+    ${Object.entries(E.saves).map(([id, n]) => `<div class="li"><div>${pn(id)}</div><b>${n}</b><button class="btn sm danger" data-act="meDelSave" data-id="${esc(id)}">${icon('x')}</button></div>`).join('')}
+    <div class="row"><select id="mg_gk" style="flex:2">${pOpts}</select><button class="btn" data-act="meAddSave">${t('add_save')}</button></div>` : ''}
   <div class="row" style="margin-top:18px"><button class="btn primary" data-act="meSave">${t('save')}</button>
     ${E.id ? `<button class="btn danger" data-act="meDelete">${t('delete')}</button>` : ''}<button class="btn" data-act="closeModal">${t('cancel')}</button></div>`;
 }

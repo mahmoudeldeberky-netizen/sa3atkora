@@ -27,7 +27,7 @@
       if (!app || app.children.length) return;
       var file = location.protocol === 'file:';
       app.innerHTML = '<div style="max-width:440px;margin:0 auto;padding:32px 20px;font-family:Cairo,system-ui,sans-serif;line-height:1.8;direction:rtl;text-align:right">' +
-        '<div style="font-size:3rem;text-align:center">⚽</div><h2 style="text-align:center">ساعة كورة</h2>' +
+        '<img src="icons/icon-192.png" width="72" height="72" alt="" style="display:block;margin:0 auto 8px;border-radius:16px"><h2 style="text-align:center">ساعة كورة</h2>' +
         (file
           ? '<p><b>الصفحة مفتوحة من الملف مباشرة (file://)</b> والمتصفح بيمنع التطبيق يشتغل بالطريقة دي.</p><p>افتحه من رابط (http) بإحدى الطريقتين:</p><ol><li>ارفعه على GitHub Pages أو Firebase Hosting (الخطوة 3 في SETUP.md).</li><li>للتجربة على الكمبيوتر: افتح مجلد التطبيق في الطرفية (Terminal) واكتب <code dir="ltr">python -m http.server 8000</code> ثم افتح <code dir="ltr">http://localhost:8000</code></li></ol>'
           : '<p>تعذّر تحميل التطبيق. تأكد من الاتصال بالإنترنت ومن رفع كل الملفات، ومن ملء ملف <code dir="ltr">firebase-config.js</code>، ثم حدّث الصفحة.</p>') +

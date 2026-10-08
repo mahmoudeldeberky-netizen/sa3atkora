@@ -55,13 +55,13 @@ service cloud.firestore {
           // طلب انضمام بكود دعوة صحيح
           (request.resource.data.role == 'player'
             && request.resource.data.status == 'pending'
-            && request.resource.data.keys().hasOnly(['uid', 'name', 'photo', 'role', 'status', 'joinCode', 'joinedAt'])
+            && request.resource.data.keys().hasOnly(['uid', 'name', 'photo', 'role', 'status', 'joinCode', 'joinedAt', 'pub'])
             && get(/databases/$(database)/documents/invites/$(request.resource.data.joinCode)).data.gid == gid)
         );
 
-        // اللاعب يعدل اسمه وصورته فقط
+        // اللاعب يعدل اسمه وصورته وما اختار يظهره من بياناته (pub) فقط
         allow update: if signed() && request.auth.uid == uid && isActive(gid)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'photo']);
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'photo', 'pub']);
 
         // الأدمن: قبول الطلبات وتغيير الدور — تعيين/إزالة أدمن يحتاج صلاحية، وتغيير صلاحية الإضافة للمالك فقط
         allow update: if isAdmin(gid) && resource.data.role != 'owner' && request.resource.data.role != 'owner'

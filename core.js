@@ -162,10 +162,19 @@ export function resizeImage(file, max = 256) {
     img.onerror = rej; img.src = url;
   });
 }
+export const ICONS = {"calendar": "<rect x=\"3\" y=\"5\" width=\"18\" height=\"16\" rx=\"2\"/><path d=\"M3 10h18M8 3v4M16 3v4\"/>", "trophy": "<path d=\"M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3\"/>", "user": "<circle cx=\"12\" cy=\"8\" r=\"4\"/><path d=\"M4 21c0-4 4-6 8-6s8 2 8 6\"/>", "settings": "<path d=\"M4 7h10M18 7h2M4 17h2M10 17h10\"/><circle cx=\"16\" cy=\"7\" r=\"2\"/><circle cx=\"8\" cy=\"17\" r=\"2\"/>", "info": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 11v6M12 7.5v.5\"/>", "back": "<path d=\"M15 5l-7 7 7 7\"/>", "x": "<path d=\"M6 6l12 12M18 6L6 18\"/>", "target": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><circle cx=\"12\" cy=\"12\" r=\"4\"/>", "star": "<path d=\"M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z\"/>", "award": "<circle cx=\"12\" cy=\"9\" r=\"6\"/><path d=\"M8.5 14L7 21l5-3 5 3-1.5-7\"/>", "shield": "<path d=\"M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z\"/>", "arrow": "<path d=\"M4 12h15M13 6l6 6-6 6\"/>", "flame": "<path d=\"M12 3c1 4 5 5 5 10a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-5 1-9z\"/>", "crown": "<path d=\"M3 8l4 4 5-7 5 7 4-4-2 11H5z\"/>"};
+export const icon = (n, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n] || ''}</svg>`;
 export function bar(title, back = false, extra = '') {
-  return `<div class="bar">${back ? `<button data-act="back" aria-label="back">${S.lang === 'ar' ? '→' : '←'}</button>` : ''}<h1>${esc(title)}</h1>${extra}</div>`;
+  return `<div class="bar">${back ? `<button data-act="back" aria-label="back">${icon('back', 'flip')}</button>` : ''}<h1>${esc(title)}</h1>${extra}</div>`;
 }
-export const spinner = () => '<div class="empty">⚽</div>';
+export const spinner = () => '<div class="empty"><div class="spin"></div></div>';
+export function pubOf(p) {
+  const sh = (p && p.share) || {}, o = {};
+  if (sh.age && p.birthYear) o.birthYear = p.birthYear;
+  if (sh.height && p.height) o.height = p.height;
+  if (sh.weight && p.weight) o.weight = p.weight;
+  return o;
+}
 // أرقام لاتينية (123) دائماً — حتى في الإدخال
 export const numIn = (id, v = '', extra = '') =>
   `<input id="${id}" type="text" inputmode="decimal" dir="ltr" lang="en" autocomplete="off" value="${esc(v)}" ${extra}>`;

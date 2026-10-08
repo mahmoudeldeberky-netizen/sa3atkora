@@ -1,4 +1,4 @@
-import { S, F, ACTIONS, t, esc, av, money, sgn, fmtNum, dt, dShort, tsMs, bar, spinner, isAdmin, gcol, openModal, closeModal, balanceOf, feat } from './core.js';
+import { S, F, ACTIONS, t, esc, av, money, sgn, fmtNum, dt, dShort, tsMs, bar, spinner, icon, isAdmin, gcol, openModal, closeModal, balanceOf, feat } from './core.js';
 import { memberAdmin } from './admin.js';
 
 // ---------- loading & computing ----------
@@ -46,20 +46,20 @@ export function ranking(per, key) {
 }
 
 const ACH = [
-  ['firstGoal', '⚽', p => p.goals >= 1],
-  ['goals10', '🔟', p => p.goals >= 10],
-  ['goals25', '🔥', p => p.goals >= 25],
-  ['goals50', '👑', p => p.goals >= 50],
-  ['hat', '🎩', p => p.hat >= 1],
-  ['pen', '🎯', p => p.pens >= 1],
-  ['firstAssist', '🤝', p => p.assists >= 1],
-  ['assists10', '🅰️', p => p.assists >= 10],
-  ['assists25', '✨', p => p.assists >= 25],
-  ['saves10', '🧤', p => p.saves >= 10],
-  ['saves25', '🛡️', p => p.saves >= 25],
-  ['apps10', '📅', p => p.apps >= 10],
-  ['apps25', '🏅', p => p.apps >= 25],
-  ['apps50', '🏆', p => p.apps >= 50]
+  ['firstGoal', 'target', p => p.goals >= 1],
+  ['goals10', 'target', p => p.goals >= 10],
+  ['goals25', 'flame', p => p.goals >= 25],
+  ['goals50', 'crown', p => p.goals >= 50],
+  ['hat', 'star', p => p.hat >= 1],
+  ['pen', 'target', p => p.pens >= 1],
+  ['firstAssist', 'arrow', p => p.assists >= 1],
+  ['assists10', 'arrow', p => p.assists >= 10],
+  ['assists25', 'star', p => p.assists >= 25],
+  ['saves10', 'shield', p => p.saves >= 10],
+  ['saves25', 'shield', p => p.saves >= 25],
+  ['apps10', 'calendar', p => p.apps >= 10],
+  ['apps25', 'calendar', p => p.apps >= 25],
+  ['apps50', 'trophy', p => p.apps >= 50]
 ];
 export function achievements(uid, per) {
   const p = per[uid] || blank();
@@ -68,7 +68,7 @@ export function achievements(uid, per) {
     const r = ranking(per, key).slice(0, 3).map(x => x[0]);
     list.push({ id, ic, on: r.includes(uid) });
   };
-  top('goals', 'top3goals', '🥇'); top('assists', 'top3assists', '🥈'); top('saves', 'top3saves', '🥉');
+  top('goals', 'top3goals', 'award'); top('assists', 'top3assists', 'award'); top('saves', 'top3saves', 'award');
   return list;
 }
 
@@ -89,9 +89,9 @@ export function matchModal(id) {
     </div>
     <div class="grid2">${team(m.teamA || {})}${team(m.teamB || {})}</div>
     ${(m.goals || []).length ? `<h3 style="margin:14px 0 4px">${t('goals')}</h3>` + m.goals.map(g => `
-      <div class="li"><div>⚽ <b>${nm(g.uid)}</b>${g.og ? ` <span class="tag warn">${t('own_goal')}</span>` : ''}${g.penalty ? ` <span class="tag gold">${t('penalty')}</span>` : ''}
-      ${g.assist ? `<div class="mute small">🅰️ ${nm(g.assist)}</div>` : ''}</div><span class="tag">${t('team')} ${esc(g.team === 'A' ? m.teamA?.name : m.teamB?.name)}</span></div>`).join('') : ''}
-    ${Object.keys(m.saves || {}).length ? `<h3 style="margin:14px 0 4px">${t('saves')}</h3>` + Object.entries(m.saves).map(([id, n]) => `<div class="li"><div>🧤 ${nm(id)}</div><b>${n}</b></div>`).join('') : ''}
+      <div class="li"><div><b>${nm(g.uid)}</b>${g.og ? ` <span class="tag warn">${t('own_goal')}</span>` : ''}${g.penalty ? ` <span class="tag gold">${t('penalty')}</span>` : ''}
+      ${g.assist ? `<div class="mute small">${t('assist_by')}: ${nm(g.assist)}</div>` : ''}</div><span class="tag">${t('team')} ${esc(g.team === 'A' ? m.teamA?.name : m.teamB?.name)}</span></div>`).join('') : ''}
+    ${Object.keys(m.saves || {}).length ? `<h3 style="margin:14px 0 4px">${t('saves')}</h3>` + Object.entries(m.saves).map(([id, n]) => `<div class="li"><div>${nm(id)}</div><b>${n}</b></div>`).join('') : ''}
     <div class="row">${isAdmin() ? `<button class="btn primary" data-act="editMatch" data-id="${esc(m.id)}">${t('edit')}</button>` : ''}<button class="btn" data-act="closeModal">${t('close')}</button></div>`);
 }
 ACTIONS.openMatch = el => matchModal(el.dataset.id);
@@ -102,11 +102,10 @@ export function statsTab() {
   const keys = ['goals', 'assists', 'saves', 'apps'];
   const per = S.stats.per;
   const r = ranking(per, S.rtab);
-  const medals = ['🥇', '🥈', '🥉'];
   return `<div class="seg">${keys.map(k => `<button class="${S.rtab === k ? 'on' : ''}" data-act="rtab" data-k="${k}">${t('rk_' + k)}</button>`).join('')}</div>
   <div class="card">${r.length ? r.map(([id, v], i) => `
     <div class="li" data-act="openMember" data-uid="${esc(id)}" style="cursor:pointer">
-      <b style="width:28px;text-align:center">${medals[i] || (i + 1)}</b>${av(nameFor(id), S.members[id]?.photo)}
+      <span class="rk r${i + 1}">${i + 1}</span>${av(nameFor(id), S.members[id]?.photo)}
       <div><b>${esc(nameFor(id))}</b></div><span class="amt">${fmtNum(v[S.rtab])}</span></div>`).join('') : `<div class="empty">${t('no_stats')}</div>`}</div>`;
 }
 function nameFor(id) {
@@ -118,6 +117,15 @@ ACTIONS.rtab = el => { S.rtab = el.dataset.k; S.render(); };
 ACTIONS.openMember = el => S.go({ view: 'member', gid: S.gid, uid: el.dataset.uid });
 
 // ---------- member profile body ----------
+function infoChips(uid, m) {
+  const mine = uid === S.user.uid, src = mine ? S.profile : (m.pub || {});
+  const parts = [];
+  if (src.birthYear) parts.push(`${t('age')}: ${new Date().getFullYear() - src.birthYear}`);
+  if (src.height) parts.push(`${t('height_cm')}: ${fmtNum(src.height)}`);
+  if (src.weight) parts.push(`${t('weight_kg')}: ${fmtNum(src.weight)}`);
+  if (!parts.length) return mine ? `<div class="mute small" style="margin-top:8px">${t('no_info_shared')}</div>` : '';
+  return `<div style="margin-top:10px">${parts.map(p => `<span class="tag" style="margin:2px">${esc(p)}</span>`).join('')}</div>`;
+}
 export function memberBody(uid) {
   if (!S.stats) { loadStats(); return spinner(); }
   const m = S.members[uid]; if (!m) return `<div class="empty">—</div>`;
@@ -129,7 +137,8 @@ export function memberBody(uid) {
   return `
   <div class="card" style="text-align:center">${av(m.name, m.photo, 'lg')}
     <h2 style="margin-top:8px">${esc(m.name)}</h2>
-    <span class="tag">${t('role_' + m.role)}</span></div>
+    <span class="tag">${t('role_' + m.role)}</span>
+    ${infoChips(uid, m)}</div>
   ${priv ? `<div class="card"><div class="mute small">${t('balance')}</div>
     <div class="big ${bal < 0 ? 'neg' : 'pos'}" dir="ltr">${fmtNum(bal)} <span class="small">${esc(S.g?.currency || '')}</span></div>
     ${hist.length ? `<h3 style="margin:14px 0 4px">${t('history')}</h3>` + hist.map(l => `
@@ -145,12 +154,12 @@ export function memberBody(uid) {
   </div>
   <h3>${t('achievements')}</h3>
   <div class="card"><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px">
-    ${ach.map(a => `<div style="text-align:center;opacity:${a.on ? 1 : .35};filter:${a.on ? 'none' : 'grayscale(1)'}">
-      <div style="font-size:2rem">${a.ic}</div><b class="small">${t('ach_' + a.id)}</b><div class="mute small">${t('ach_' + a.id + '_d')}</div></div>`).join('')}
+    ${ach.map(a => `<div style="text-align:center;opacity:${a.on ? 1 : .55}">
+      <div class="badge ${a.on ? 'on' : ''}">${icon(a.ic)}</div><b class="small">${t('ach_' + a.id)}</b><div class="mute small">${t('ach_' + a.id + '_d')}</div></div>`).join('')}
   </div></div>
   ${feat('scorers') ? `<h3>${t('goal_log')}</h3><div class="card">${p.log.length ? p.log.slice(0, 60).map(x => `
     <div class="li" data-act="openMatch" data-id="${esc(x.m.id)}" style="cursor:pointer">
-      <div>${x.kind === 'goal' ? '⚽' : '🅰️'} <b>${dShort(x.m.date)}</b>
+      <div><span class="tag">${x.kind === 'goal' ? t('tag_goal') : t('tag_assist')}</span> <b>${dShort(x.m.date)}</b>
       ${x.g.penalty ? `<span class="tag gold">${t('penalty')}</span>` : ''}
       <div class="mute small" dir="ltr">${x.m.scoreA} - ${x.m.scoreB}</div></div><span class="mute">›</span></div>`).join('') : `<div class="empty">${t('no_goals')}</div>`}</div>` : ''}
   ${memberAdmin(uid)}`;
