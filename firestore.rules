@@ -1,0 +1,149 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- helpers ----------
+    function signed() { return request.auth != null; }
+    function gdoc(gid) { return /databases/$(database)/documents/groups/$(gid); }
+    function memPath(gid) { return /databases/$(database)/documents/groups/$(gid)/members/$(request.auth.uid); }
+    function hasMem(gid) { return signed() && exists(memPath(gid)); }
+    function mem(gid) { return get(memPath(gid)).data; }
+    function isActive(gid) { return hasMem(gid) && mem(gid).status == 'active'; }
+    function isAdmin(gid) { return isActive(gid) && mem(gid).role in ['owner', 'admin']; }
+    function isOwner(gid) { return isActive(gid) && mem(gid).role == 'owner'; }
+    function canGrant(gid) { return isAdmin(gid) && (mem(gid).role == 'owner' || mem(gid).get('canAddAdmins', false) == true); }
+    function sessionData(gid, sid) { return get(/databases/$(database)/documents/groups/$(gid)/sessions/$(sid)).data; }
+
+    // ---------- users ----------
+    match /users/{uid} {
+      allow read, write: if signed() && request.auth.uid == uid;
+      match /mygroups/{gid} {
+        allow read, create, update: if signed() && request.auth.uid == uid;
+        allow delete: if signed() && (request.auth.uid == uid || isAdmin(gid));
+      }
+    }
+
+    // ---------- invites (code -> group) ----------
+    match /invites/{code} {
+      allow get: if signed();
+      allow list: if false;
+      allow create: if signed() && isAdmin(request.resource.data.gid);
+      allow delete: if signed() && isAdmin(resource.data.gid);
+    }
+
+    // ---------- groups ----------
+    match /groups/{gid} {
+      allow create: if signed() && request.resource.data.ownerId == request.auth.uid;
+      allow read: if isActive(gid);
+      // الأدمن يعدّل الإعدادات والصندوق (بدون تغيير المالك) — المالك فقط ينقل الملكية لأدمن
+      allow update: if (isAdmin(gid) && request.resource.data.ownerId == resource.data.ownerId)
+        || (isOwner(gid)
+            && request.resource.data.ownerId != resource.data.ownerId
+            && get(/databases/$(database)/documents/groups/$(gid)/members/$(request.resource.data.ownerId)).data.role == 'admin');
+      allow delete: if false;
+
+      // ---------- members (الاسم والصورة والدور — بدون أرصدة) ----------
+      match /members/{uid} {
+        allow read: if isActive(gid) || (signed() && request.auth.uid == uid);
+
+        allow create: if signed() && request.auth.uid == uid && (
+          // المالك عند إنشاء المجموعة (نفس الـ batch)
+          (request.resource.data.role == 'owner'
+            && request.resource.data.status == 'active'
+            && getAfter(gdoc(gid)).data.ownerId == request.auth.uid)
+          ||
+          // طلب انضمام بكود دعوة صحيح
+          (request.resource.data.role == 'player'
+            && request.resource.data.status == 'pending'
+            && request.resource.data.keys().hasOnly(['uid', 'name', 'photo', 'role', 'status', 'joinCode', 'joinedAt'])
+            && get(/databases/$(database)/documents/invites/$(request.resource.data.joinCode)).data.gid == gid)
+        );
+
+        // اللاعب يعدل اسمه وصورته فقط
+        allow update: if signed() && request.auth.uid == uid && isActive(gid)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'photo']);
+
+        // الأدمن: قبول الطلبات وتغيير الدور — تعيين/إزالة أدمن يحتاج صلاحية، وتغيير صلاحية الإضافة للمالك فقط
+        allow update: if isAdmin(gid) && resource.data.role != 'owner' && request.resource.data.role != 'owner'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'role', 'canAddAdmins'])
+          && (request.resource.data.role == resource.data.role || canGrant(gid))
+          && (request.resource.data.get('canAddAdmins', false) == resource.data.get('canAddAdmins', false) || isOwner(gid));
+
+        // نقل الملكية: المالك الجديد (كان أدمن) + المالك القديم يصير أدمن
+        allow update: if isOwner(gid)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'canAddAdmins'])
+          && (
+            (resource.data.role == 'admin' && request.resource.data.role == 'owner'
+              && getAfter(gdoc(gid)).data.ownerId == uid)
+            ||
+            (uid == request.auth.uid && request.resource.data.role == 'admin'
+              && getAfter(gdoc(gid)).data.ownerId != request.auth.uid)
+          );
+
+        // الحذف: اللاعب يخرج بنفسه (غير المالك)، الأدمن يشيل لاعب أو يرفض طلب، المالك يشيل أي أدمن
+        allow delete: if signed() && (
+          (request.auth.uid == uid && resource.data.role != 'owner')
+          || (isAdmin(gid) && resource.data.role == 'player')
+          || (isOwner(gid) && resource.data.role == 'admin')
+          || (request.auth.uid == uid && resource.data.status == 'pending')
+        );
+      }
+
+      // ---------- الأرصدة: اللاعب يشوف رصيده فقط، الأدمن يشوف الكل ----------
+      match /balances/{uid} {
+        allow read: if isAdmin(gid) || (isActive(gid) && request.auth.uid == uid);
+        allow write: if isAdmin(gid);
+      }
+
+      // ---------- دفتر الحركات: ثابت، لا يُحذف. التصحيح بقيد عكسي ----------
+      match /ledger/{id} {
+        allow read: if isAdmin(gid) || (isActive(gid) && resource.data.uid == request.auth.uid);
+        allow create: if isAdmin(gid) && request.resource.data.by == request.auth.uid;
+        allow update: if isAdmin(gid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reversed']);
+        allow delete: if false;
+      }
+
+      // ---------- سجل المراجعة: إضافة فقط ----------
+      match /audit/{id} {
+        allow read: if isAdmin(gid);
+        allow create: if isAdmin(gid) && request.resource.data.by == request.auth.uid;
+        allow update, delete: if false;
+      }
+
+      // ---------- المباريات (نتائج وأهداف) ----------
+      match /matches/{mid} {
+        allow read: if isActive(gid);
+        allow write: if isAdmin(gid);
+      }
+
+      // ---------- الحصص (المواعيد) والحضور ----------
+      match /sessions/{sid} {
+        allow read: if isActive(gid);
+        allow write: if isAdmin(gid);
+
+        match /attendance/{uid} {
+          allow read: if isActive(gid);
+          allow write: if isAdmin(gid);
+
+          allow create: if isActive(gid) && request.auth.uid == uid
+            && sessionData(gid, sid).status == 'open'
+            && request.resource.data.keys().hasOnly(['uid', 'name', 'photo', 'rsvp', 'updatedAt', 'sub'])
+            && request.resource.data.uid == request.auth.uid
+            && request.resource.data.rsvp in ['yes', 'no', 'waitlist']
+            && (!('sub' in request.resource.data) || request.resource.data.sub.status == 'pending');
+
+          allow update: if isActive(gid) && request.auth.uid == uid
+            && sessionData(gid, sid).status == 'open'
+            && request.resource.data.keys().hasOnly(['uid', 'name', 'photo', 'rsvp', 'updatedAt', 'sub'])
+            && request.resource.data.rsvp in ['yes', 'no', 'waitlist']
+            && !(resource.data.rsvp == 'waitlist' && request.resource.data.rsvp == 'yes')
+            && (!(resource.data.rsvp == 'yes' && request.resource.data.rsvp == 'no')
+                || request.time < sessionData(gid, sid).startsAt - duration.value(sessionData(gid, sid).cancelHours, 'h'))
+            && (!('sub' in request.resource.data)
+                || request.resource.data.sub.status == 'pending'
+                || resource.data.get('sub', null) == request.resource.data.sub);
+        }
+      }
+    }
+  }
+}

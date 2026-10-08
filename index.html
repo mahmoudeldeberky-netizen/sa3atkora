@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>ساعة كورة</title>
+  <meta name="theme-color" content="#2e7d32">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="ساعة كورة">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app"></div>
+  <div id="modal"></div>
+  <div id="toast"></div>
+  <script>
+    // رسالة واضحة بدل الشاشة البيضا لو الصفحة اتفتحت من الملف مباشرة أو فشل التحميل
+    window.__bootMsg = function () {
+      var app = document.getElementById('app');
+      if (!app || app.children.length) return;
+      var file = location.protocol === 'file:';
+      app.innerHTML = '<div style="max-width:440px;margin:0 auto;padding:32px 20px;font-family:Cairo,system-ui,sans-serif;line-height:1.8;direction:rtl;text-align:right">' +
+        '<div style="font-size:3rem;text-align:center">⚽</div><h2 style="text-align:center">ساعة كورة</h2>' +
+        (file
+          ? '<p><b>الصفحة مفتوحة من الملف مباشرة (file://)</b> والمتصفح بيمنع التطبيق يشتغل بالطريقة دي.</p><p>افتحه من رابط (http) بإحدى الطريقتين:</p><ol><li>ارفعه على GitHub Pages أو Firebase Hosting (الخطوة 3 في SETUP.md).</li><li>للتجربة على الكمبيوتر: افتح مجلد التطبيق في الطرفية (Terminal) واكتب <code dir="ltr">python -m http.server 8000</code> ثم افتح <code dir="ltr">http://localhost:8000</code></li></ol>'
+          : '<p>تعذّر تحميل التطبيق. تأكد من الاتصال بالإنترنت ومن رفع كل الملفات، ومن ملء ملف <code dir="ltr">firebase-config.js</code>، ثم حدّث الصفحة.</p>') +
+        '</div>';
+    };
+    if (location.protocol === 'file:') window.addEventListener('DOMContentLoaded', window.__bootMsg);
+    setTimeout(window.__bootMsg, 6000);
+  </script>
+  <script type="module" src="app.js" onerror="__bootMsg()"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+    }
+  </script>
+</body>
+</html>
