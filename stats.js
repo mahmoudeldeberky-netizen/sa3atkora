@@ -1,4 +1,4 @@
-import { S, F, ACTIONS, t, esc, av, money, sgn, fmtNum, dt, dShort, tsMs, bar, spinner, icon, isAdmin, gcol, openModal, closeModal, balanceOf, feat } from './core.js';
+import { S, F, ACTIONS, t, esc, av, tl, nameOf, db, gref, addAudit, val, toast, money, sgn, fmtNum, dt, dShort, tsMs, bar, spinner, icon, isAdmin, gcol, openModal, closeModal, balanceOf, feat } from './core.js';
 import { memberAdmin } from './admin.js';
 
 // ---------- loading & computing ----------
@@ -20,10 +20,12 @@ export function compute(matches) {
   const per = {};
   const P = id => (per[id] ||= blank());
   for (const m of matches) {
-    const inA = new Set(m.teamA?.players || []), inB = new Set(m.teamB?.players || []);
+    const inA = new Set(m.teamA?.all || m.teamA?.players || []), inB = new Set(m.teamB?.all || m.teamB?.players || []);
+    const curA = new Set(m.teamA?.players || []), curB = new Set(m.teamB?.players || []);
     for (const id of m.players || []) {
       const p = P(id); p.apps++;
-      const mine = inA.has(id) ? m.scoreA - m.scoreB : (inB.has(id) ? m.scoreB - m.scoreA : 0);
+      const both = inA.has(id) && inB.has(id), a = both ? curA.has(id) : inA.has(id), b = both ? curB.has(id) : inB.has(id);
+      const mine = a ? m.scoreA - m.scoreB : (b ? m.scoreB - m.scoreA : 0);
       if (mine > 0) p.wins++; else if (mine < 0) p.losses++; else p.draws++;
     }
     const inMatch = {};
@@ -79,20 +81,20 @@ function findMatch(id) {
 }
 export function matchModal(id) {
   const m = findMatch(id); if (!m) return;
-  const nm = x => esc(m.names?.[x] || S.members[x]?.name || '—');
-  const team = (tm) => `<div class="tile"><b>${t('team')} ${esc(tm.name)}</b>${(tm.players || []).map(x => `<div class="small">${nm(x)}</div>`).join('') || '<span class="mute small">—</span>'}</div>`;
+  const nm = x => esc(S.members[x]?.name || S.guests[x]?.name || m.names?.[x] || '—');
+  const team = (tm) => `<div class="tile"><b>${t('team')} ${tl(tm)}</b>${(tm.all || tm.players || []).map(x => `<div class="small">${nm(x)}</div>`).join('') || '<span class="mute small">—</span>'}</div>`;
   openModal(() => `
     <h2>${t('match')} ${m.no || ''} · ${dShort(m.date)}</h2>
     <div class="card" style="margin:8px 0;text-align:center">
       <div class="big" dir="ltr">${m.scoreA} - ${m.scoreB}</div>
-      <div class="mute small">${t('team')} ${esc(m.teamA?.name)} · ${t('team')} ${esc(m.teamB?.name)}</div>
+      <div class="mute small">${t('team')} ${tl(m.teamA)} · ${t('team')} ${tl(m.teamB)}</div>
       ${m.pens ? `<div class="tag gold" dir="ltr">${t('pens')}: ${m.pens.a} - ${m.pens.b}</div>` : ''}
     </div>
     <div class="grid2">${team(m.teamA || {})}${team(m.teamB || {})}</div>
     ${(m.events || []).length ? `<h3 style="margin:14px 0 4px">${t('events')}</h3>` + [...m.events].sort((a, b) => (a.t || 0) - (b.t || 0)).map(e => eventLine(m, e)).join('') : ''}
     ${!(m.events || []).length && (m.goals || []).length ? `<h3 style="margin:14px 0 4px">${t('goals')}</h3>` + m.goals.map(g => `
       <div class="li"><div><b>${nm(g.uid)}</b>${g.og ? ` <span class="tag warn">${t('own_goal')}</span>` : ''}${g.penalty ? ` <span class="tag gold">${t('penalty')}</span>` : ''}
-      ${g.assist ? `<div class="mute small">${t('assist_by')}: ${nm(g.assist)}</div>` : ''}</div><span class="tag">${t('team')} ${esc(g.team === 'A' ? m.teamA?.name : m.teamB?.name)}</span></div>`).join('') : ''}
+      ${g.assist ? `<div class="mute small">${t('assist_by')}: ${nm(g.assist)}</div>` : ''}</div><span class="tag">${t('team')} ${tl(g.team === 'A' ? m.teamA : m.teamB)}</span></div>`).join('') : ''}
     ${!(m.events || []).length && Object.keys(m.saves || {}).length ? `<h3 style="margin:14px 0 4px">${t('saves')}</h3>` + Object.entries(m.saves).map(([id, n]) => `<div class="li"><div>${nm(id)}</div><b>${n}</b></div>`).join('') : ''}
     <div class="row">${isAdmin() ? `<button class="btn primary" data-act="editMatch" data-id="${esc(m.id)}">${t('edit')}</button>` : ''}<button class="btn" data-act="closeModal">${t('close')}</button></div>`);
 }
@@ -102,14 +104,15 @@ ACTIONS.openMatch = el => {
   else matchModal(el.dataset.id);
 };
 export function eventLine(m, e, del = false) {
-  const nm = id => esc(m.names?.[id] || S.members[id]?.name || '-');
-  const tn = e.team === 'A' ? m.teamA?.name : m.teamB?.name;
+  const nm = id => esc(S.members[id]?.name || S.guests[id]?.name || m.names?.[id] || '-');
+  const tn = tl(e.team === 'A' ? m.teamA : m.teamB);
   let body = '';
   if (e.type === 'goal') body = `<b>${nm(e.uid)}</b>${e.og ? ` <span class="tag warn">${t('own_goal')}</span>` : ''}${e.penalty ? ` <span class="tag gold">${t('penalty')}</span>` : ''}${e.assist ? `<div class="mute small">${t('assist_by')}: ${nm(e.assist)}</div>` : ''}`;
   else if (e.type === 'yellow') body = `<span class="cd cy"></span> <b>${nm(e.uid)}</b>`;
   else if (e.type === 'red') body = `<span class="cd cr"></span> <b>${nm(e.uid)}</b>${e.second ? ` <span class="tag">${t('second_yellow')}</span>` : ''}`;
+  else if (e.type === 'sub') body = `${icon('swap')} <b>${nm(e.in)}</b><div class="mute small">${t('sub_out')}: ${nm(e.out)}</div>`;
   else body = `<b>${nm(e.uid)}</b> <span class="tag">${t('save_word')}</span>`;
-  return `<div class="li"><b dir="ltr" style="width:40px">${Math.floor((e.t || 0) / 60) + 1}'</b><div>${body}</div><span class="tag">${t('team')} ${esc(tn)}</span>${del ? `<button class="btn sm danger" data-act="refDelEv" data-id="${esc(e.id)}">${icon('x')}</button>` : ''}</div>`;
+  return `<div class="li"><b dir="ltr" style="width:40px">${Math.floor((e.t || 0) / 60) + 1}'</b><div>${body}</div><span class="tag">${t('team')} ${tn}</span>${del && e.type !== 'sub' ? `<button class="btn sm danger" data-act="refDelEv" data-id="${esc(e.id)}">${icon('x')}</button>` : ''}</div>`;
 }
 
 // ---------- rank tab ----------
@@ -125,7 +128,7 @@ export function statsTab() {
       <div><b>${esc(nameFor(id))}</b></div><span class="amt">${fmtNum(v[S.rtab])}</span></div>`).join('') : `<div class="empty">${t('no_stats')}</div>`}</div>`;
 }
 function nameFor(id) {
-  if (S.members[id]) return S.members[id].name;
+  const n = nameOf(id); if (n !== '—') return n;
   for (const m of S.stats?.matches || []) if (m.names?.[id]) return m.names[id];
   return '—';
 }
@@ -144,17 +147,24 @@ function infoChips(uid, m) {
 }
 export function memberBody(uid) {
   if (!S.stats) { loadStats(); return spinner(); }
-  const m = S.members[uid]; if (!m) return `<div class="empty">—</div>`;
+  const real = S.members[uid], isGuest = !real;
+  const m = real || { name: nameFor(uid), photo: '', role: 'guest' };
+  if (isGuest && m.name === '—' && !S.guests[uid] && !S.stats.per[uid]) return `<div class="empty">—</div>`;
   const p = S.stats.per[uid] || blank();
-  const priv = uid === S.user.uid || isAdmin();
+  const priv = !isGuest && (uid === S.user.uid || isAdmin());
+  const gHist = isGuest && isAdmin() ? S.ledger.filter(l => l.guest === uid && l.type === 'guest').sort((a, b) => tsMs(b.at) - tsMs(a.at)).slice(0, 40) : [];
   const ach = achievements(uid, S.stats.per);
   const hist = priv ? S.ledger.filter(l => l.uid === uid).sort((a, b) => tsMs(b.at) - tsMs(a.at)).slice(0, 40) : [];
   const bal = balanceOf(uid);
+  const gHtml = gHist.length ? `<div class="card"><h3 style="margin:0 0 4px">${t('history')}</h3>${gHist.map(l => `
+      <div class="li"><div><b>${t('lt_guest')}</b><div class="mute small">${dt(tsMs(l.at), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}${l.reversed ? ' · ' + t('reversed') : ''}</div></div>
+      <span class="amt pos" dir="ltr">${sgn(l.fund)}</span></div>`).join('')}</div>` : '';
   return `
   <div class="card" style="text-align:center">${av(m.name, m.photo, 'lg')}
     <h2 style="margin-top:8px">${esc(m.name)}</h2>
-    <span class="tag">${t('role_' + m.role)}</span>
-    ${infoChips(uid, m)}</div>
+    <span class="tag ${isGuest ? 'gold' : ''}">${t('role_' + m.role)}</span>
+    ${isGuest ? '' : infoChips(uid, m)}</div>
+  ${gHtml}
   ${priv ? `<div class="card"><div class="mute small">${t('balance')}</div>
     <div class="big ${bal < 0 ? 'neg' : 'pos'}" dir="ltr">${fmtNum(bal)} <span class="small">${esc(S.g?.currency || '')}</span></div>
     ${hist.length ? `<h3 style="margin:14px 0 4px">${t('history')}</h3>` + hist.map(l => `
@@ -180,10 +190,27 @@ export function memberBody(uid) {
       <div><span class="tag">${x.kind === 'goal' ? t('tag_goal') : t('tag_assist')}</span> <b>${dShort(x.m.date)}</b>
       ${x.g.penalty ? `<span class="tag gold">${t('penalty')}</span>` : ''}
       <div class="mute small" dir="ltr">${x.m.scoreA} - ${x.m.scoreB}</div></div><span class="mute">›</span></div>`).join('') : `<div class="empty">${t('no_goals')}</div>`}</div>` : ''}
-  ${memberAdmin(uid)}`;
+  ${isGuest ? guestAdmin(uid) : memberAdmin(uid)}`;
 }
+
+function guestAdmin(uid) {
+  if (!isAdmin()) return '';
+  return `<h3>${t('admin_actions')}</h3><div class="card"><div class="row" style="margin-top:0"><button class="btn" data-act="renameGuest" data-uid="${esc(uid)}">${t('rename_guest')}</button></div></div>`;
+}
+ACTIONS.renameGuest = el => {
+  const uid = el.dataset.uid;
+  openModal(() => `<h2>${t('rename_guest')}</h2><label>${t('guest_name')}</label><input id="rg_name" maxlength="40" value="${esc(nameFor(uid))}">
+    <div class="row"><button class="btn primary" data-act="renameGuestSave" data-uid="${esc(uid)}">${t('save')}</button><button class="btn" data-act="closeModal">${t('cancel')}</button></div>`);
+};
+ACTIONS.renameGuestSave = async el => {
+  const uid = el.dataset.uid, name = val('rg_name').trim(); if (!name) { toast(t('name_required')); return; }
+  const b = F.writeBatch(db);
+  b.set(gref('guests', uid), { name, createdAt: F.serverTimestamp() }, { merge: true });
+  addAudit(b, 'guest_rename', `${nameFor(uid)} > ${name}`);
+  await b.commit(); closeModal(); toast(t('saved'));
+};
 
 export function memberView(uid) {
   const m = S.members[uid];
-  return bar(m?.name || '', true) + `<div style="padding-bottom:12px">${memberBody(uid)}</div>`;
+  return bar(m?.name || nameFor(uid), true) + `<div style="padding-bottom:12px">${memberBody(uid)}</div>`;
 }

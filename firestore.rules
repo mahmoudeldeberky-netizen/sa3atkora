@@ -110,6 +110,12 @@ service cloud.firestore {
         allow update, delete: if false;
       }
 
+      // ---------- الضيوف (ملفات دائمة للاعبين الزوار) ----------
+      match /guests/{id} {
+        allow read: if isActive(gid);
+        allow write: if isAdmin(gid);
+      }
+
       // ---------- المباريات (نتائج وأهداف) ----------
       match /matches/{mid} {
         allow read: if isActive(gid);

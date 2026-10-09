@@ -1,5 +1,5 @@
 import { S, F, db, ACTIONS, CHANGES, INPUTS, t, esc, av, val, num, checked, money, fmtNum, dt, tsMs, toLocalInput, toast, openModal, closeModal, drawModal, confirmBox,
-  numIn, dtIn, icon, bar, spinner, isAdmin, gref, gcol, addAudit, addLedger, bumpFund, balanceOf, slotCount, playersOf, attMapFor, myName, photoOf, feat, download } from './core.js';
+  numIn, dtIn, icon, bar, spinner, isAdmin, gref, gcol, addAudit, addLedger, bumpFund, balanceOf, slotCount, playersOf, attMapFor, myName, photoOf, feat, download, tl, tlab, nameOf } from './core.js';
 import { matchModal, eventLine } from './stats.js';
 
 const sessOf = id => S.sessions.find(x => x.id === (id || S.sid));
@@ -139,16 +139,20 @@ ACTIONS.attMenu = el => {
       ${b('del', t('remove_record'), 'danger')}<button class="btn" data-act="closeModal">${t('close')}</button></div>`;
   });
 };
+const subDocId = id => Object.values(S.att).find(x => x.subFor === id)?.uid || 's_' + id;
+const findGuest = name => Object.values(S.guests).find(g => g.name.trim().toLowerCase() === name.trim().toLowerCase());
 ACTIONS.attSet = async el => {
   const id = el.dataset.id, v = el.dataset.v, a = S.att[id]; if (!a) return;
-  const b = F.writeBatch(db), ref = attRef(S.sid, id), subRef = attRef(S.sid, 's_' + id), now = F.serverTimestamp();
+  const b = F.writeBatch(db), ref = attRef(S.sid, id), subRef = attRef(S.sid, subDocId(id)), now = F.serverTimestamp();
   if (v === 'yes') b.update(ref, { rsvp: 'yes', updatedAt: now });
   else if (v === 'no') { b.update(ref, { rsvp: 'no', updatedAt: now, sub: F.deleteField() }); b.delete(subRef); }
   else if (v === 'excuse') b.update(ref, { excused: true });
   else if (v === 'unexcuse') b.update(ref, { excused: false });
   else if (v === 'subok') {
     b.update(ref, { 'sub.status': 'approved' });
-    b.set(subRef, { uid: 's_' + id, name: a.sub.name, guest: true, subFor: id, rsvp: 'yes', paid: 0, updatedAt: now });
+    let g = findGuest(a.sub.name), gid = g?.id;
+    if (!gid) { gid = 'g_' + Math.random().toString(36).slice(2, 9); b.set(gref('guests', gid), { name: a.sub.name.trim(), createdAt: now }); }
+    b.set(attRef(S.sid, gid), { uid: gid, name: g?.name || a.sub.name.trim(), guest: true, subFor: id, rsvp: 'yes', paid: 0, updatedAt: now });
   } else if (v === 'subno') { b.update(ref, { 'sub.status': 'rejected' }); b.delete(subRef); }
   else if (v === 'del') { b.delete(ref); b.delete(subRef); }
   addAudit(b, 'att_' + v, `${a.name} · ${dt(startMs(sessOf()), { day: 'numeric', month: 'short' })}`);
@@ -167,14 +171,26 @@ ACTIONS.addPlayer = async () => {
   addAudit(b, 'att_add', m.name);
   await b.commit(); closeModal(); toast(t('saved'));
 };
-ACTIONS.addGuestModal = () => openModal(() => `<h2>${t('add_guest')}</h2>
+ACTIONS.addGuestModal = () => openModal(() => {
+  const old = Object.values(S.guests).filter(g => S.att[g.id]?.rsvp !== 'yes' && !Object.values(S.att).some(x => x.uid === g.id)).sort((a, b) => a.name.localeCompare(b.name));
+  return `<h2>${t('add_guest')}</h2>
+  ${old.length ? `<label>${t('known_guest')}</label><select id="ag_old"><option value="">—</option>${old.map(g => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}</select>
+  <div class="mute small" style="margin-top:8px">${t('or_new_guest')}</div>` : ''}
   <label>${t('guest_name')}</label><input id="ag_name" maxlength="40">
   <label>${t('guest_paid')} (${esc(S.g.currency || '')})</label>${numIn('ag_paid', sessOf().fee)}
-  <div class="row"><button class="btn primary" data-act="addGuest">${t('save')}</button><button class="btn" data-act="closeModal">${t('cancel')}</button></div>`);
+  <div class="row"><button class="btn primary" data-act="addGuest">${t('save')}</button><button class="btn" data-act="closeModal">${t('cancel')}</button></div>`;
+});
 ACTIONS.addGuest = async () => {
-  const name = val('ag_name').trim(); if (!name) { toast(t('name_required')); return; }
-  const id = 'g_' + Math.random().toString(36).slice(2, 9), paid = Math.max(0, num(val('ag_paid')));
+  const oldId = val('ag_old'), typed = val('ag_name').trim();
+  let id = oldId, name = oldId ? S.guests[oldId]?.name : typed;
+  if (!name) { toast(t('name_required')); return; }
+  const paid = Math.max(0, num(val('ag_paid')));
   const b = F.writeBatch(db);
+  if (!id) {
+    const ex = findGuest(name);
+    if (ex) { id = ex.id; name = ex.name; }
+    else { id = 'g_' + Math.random().toString(36).slice(2, 9); b.set(gref('guests', id), { name, createdAt: F.serverTimestamp() }); }
+  }
   b.set(attRef(S.sid, id), { uid: id, name, guest: true, rsvp: 'yes', paid, updatedAt: F.serverTimestamp() });
   addAudit(b, 'att_guest', `${name} · ${fmtNum(paid)}`);
   await b.commit(); closeModal(); toast(t('saved'));
@@ -247,7 +263,7 @@ ACTIONS.doFinalize = async () => {
     let fund = 0;
     const when = dt(startMs(p.s), { day: 'numeric', month: 'short' });
     p.charged.forEach(a => { addLedger(tx, { type: 'charge', uid: a.uid, amount: -p.s.fee, sid: S.sid, note: when }); });
-    p.guests.forEach(a => { fund += addLedger(tx, { type: 'guest', name: a.name, fund: a.paid, sid: S.sid, note: when }); });
+    p.guests.forEach(a => { fund += addLedger(tx, { type: 'guest', name: a.name, guest: a.uid, fund: a.paid, sid: S.sid, note: when }); });
     if (p.s.cost > 0) fund += addLedger(tx, { type: 'expense', fund: -p.s.cost, sid: S.sid, note: when });
     bumpFund(tx, fund);
     tx.update(sref, { status: 'done', finalizedAt: F.serverTimestamp(), finalizedBy: S.user.uid,
@@ -270,15 +286,15 @@ ACTIONS.ics = () => {
 // =============== teams & matches ===============
 function teamsAndMatches(s) {
   const adm = isAdmin(), teams = s.teams || [];
-  const nm = id => S.att[id]?.name || '—';
+  const nm = id => nameOf(id);
   const ms = [...S.smatches].sort((a, b) => (a.no || 0) - (b.no || 0));
   let h = `<h3>${t('teams_matches')}</h3>`;
   if (teams.length) {
-    h += `<div class="card"><div class="grid2">${teams.map(tm => `<div class="tile"><b>${t('team')} ${esc(tm.name)}</b>
+    h += `<div class="card"><div class="grid2">${teams.map(tm => `<div class="tile"><b>${t('team')} ${tl(tm)}</b>
       ${tm.players.map(id => `<div class="small">${esc(nm(id))}</div>`).join('')}</div>`).join('')}</div></div>`;
   }
   h += `<div class="card">${ms.length ? ms.map(m => `<div class="li" data-act="openMatch" data-id="${esc(m.id)}" style="cursor:pointer">
-    <div><b>${t('match')} ${m.no || ''}</b>${m.status === 'live' ? ` <span class="tag warn">${t('live')}</span>` : ''}</div><b dir="ltr">${esc(m.teamA?.name)} ${m.scoreA} - ${m.scoreB} ${esc(m.teamB?.name)}</b>
+    <div><b>${t('match')} ${m.no || ''}</b>${m.status === 'live' ? ` <span class="tag warn">${t('live')}</span>` : ''}<div class="mute small">${tl(m.teamA)} - ${tl(m.teamB)}</div></div><b dir="ltr">${m.scoreA} - ${m.scoreB}</b>
     ${m.pens ? `<span class="tag gold" dir="ltr">${m.pens.a}-${m.pens.b}</span>` : ''}<span class="mute">›</span></div>`).join('') : `<div class="empty">${t('no_matches')}</div>`}
     ${adm ? `<div class="row"><button class="btn" data-act="splitTeams">${t('split_teams')}</button><button class="btn primary" data-act="refSetup">${t('start_live')}</button><button class="btn" data-act="newMatch">${t('new_match')}</button></div>` : ''}</div>`;
   return h;
@@ -294,7 +310,8 @@ function splitHtml() {
   return `<h2>${t('split_teams')}</h2>
   <label>${t('num_teams')}</label><select data-chg="tN">${[2, 3, 4, 5, 6].map(n => `<option ${T.n === n ? 'selected' : ''}>${n}</option>`).join('')}</select>
   <div class="row"><button class="btn" data-act="reshuffle">${t('reshuffle')}</button></div>
-  ${Array.from({ length: T.n }, (_, i) => `<div class="mute small" style="margin-top:12px"><b>${t('team')} ${letters[i]}</b> (${pl.filter(p => T.assign[p.uid] === i).length})</div>`).join('')}
+  ${Array.from({ length: T.n }, (_, i) => `<div style="margin-top:12px"><div class="mute small"><b>${t('team')} ${letters[i]}</b> (${pl.filter(p => T.assign[p.uid] === i).length})</div>
+    <input data-inp="tTitle" data-i="${i}" maxlength="24" placeholder="${t('team_title_ph')}" value="${esc(T.titles[i] || '')}"></div>`).join('')}
   <div>${pl.map(p => `<div class="li"><div><b>${esc(p.name)}</b></div>
     <select style="width:90px" data-chg="tAssign" data-id="${esc(p.uid)}">${Array.from({ length: T.n }, (_, i) => `<option value="${i}" ${T.assign[p.uid] === i ? 'selected' : ''}>${letters[i]}</option>`).join('')}</select></div>`).join('')}</div>
   <div class="row"><button class="btn primary" data-act="saveTeams">${t('save')}</button><button class="btn" data-act="closeModal">${t('cancel')}</button></div>`;
@@ -309,19 +326,20 @@ ACTIONS.splitTeams = () => {
   if (s.teams?.length) {
     const assign = {}; s.teams.forEach((tm, i) => tm.players.forEach(id => { assign[id] = i; }));
     pl.forEach(p => { if (assign[p.uid] === undefined) assign[p.uid] = 0; });
-    T = { n: s.teams.length, assign };
+    T = { n: s.teams.length, assign, titles: s.teams.map(tm => tm.title || '') };
   } else {
     const n = Math.min(6, Math.max(2, Math.round(pl.length / (S.g.teamSize || 6))));
-    T = { n, assign: randomAssign(pl.map(p => p.uid), n) };
+    T = { n, assign: randomAssign(pl.map(p => p.uid), n), titles: [] };
   }
   openModal(splitHtml);
 };
 CHANGES.tN = el => { T.n = +el.value; T.assign = randomAssign(playersOf(S.att).map(p => p.uid), T.n); redraw(); };
+INPUTS.tTitle = el => { T.titles[+el.dataset.i] = el.value; };
 CHANGES.tAssign = el => { T.assign[el.dataset.id] = +el.value; redraw(); };
 ACTIONS.reshuffle = () => { T.assign = randomAssign(playersOf(S.att).map(p => p.uid), T.n); redraw(); };
 ACTIONS.saveTeams = async () => {
   const pl = playersOf(S.att);
-  const teams = Array.from({ length: T.n }, (_, i) => ({ name: letters[i], players: pl.filter(p => T.assign[p.uid] === i).map(p => p.uid) }));
+  const teams = Array.from({ length: T.n }, (_, i) => ({ name: letters[i], title: (T.titles[i] || '').trim(), players: pl.filter(p => T.assign[p.uid] === i).map(p => p.uid) }));
   const b = F.writeBatch(db);
   b.update(gref('sessions', S.sid), { teams });
   addAudit(b, 'teams', `${T.n}`);
@@ -337,24 +355,26 @@ function assigned() { return E.pool.filter(p => teamOf(p.id)); }
 function fillFromTeams() {
   const s = sessOf(), ta = s.teams?.[E.ia], tb = s.teams?.[E.ib];
   E.assign = {};
+  E.at = ta?.title || ''; E.bt = tb?.title || '';
   if (ta) { E.a = ta.name; ta.players.forEach(id => { E.assign[id] = 'A'; }); }
   if (tb) { E.b = tb.name; tb.players.forEach(id => { E.assign[id] = 'B'; }); }
 }
 ACTIONS.newMatch = () => {
   const s = sessOf(), pl = playersOf(S.att);
   if (pl.length < 2) { toast(t('need_players')); return; }
-  E = { id: null, no: S.smatches.reduce((m, x) => Math.max(m, x.no || 0), 0) + 1, a: 'A', b: 'B', ia: 0, ib: 1, assign: {}, scoreA: 0, scoreB: 0, goals: [], saves: {}, pens: null,
+  E = { id: null, no: S.smatches.reduce((m, x) => Math.max(m, x.no || 0), 0) + 1, a: 'A', b: 'B', at: '', bt: '', ia: 0, ib: 1, assign: {}, scoreA: 0, scoreB: 0, goals: [], saves: {}, pens: null,
     pool: pl.map(p => ({ id: p.uid, name: p.name })) };
   if (s.teams?.length >= 2) fillFromTeams();
   openModal(editorHtml);
 };
 ACTIONS.editMatch = el => {
   const m = S.smatches.find(x => x.id === el.dataset.id) || S.stats?.matches.find(x => x.id === el.dataset.id); if (!m || m.status === 'live') return;
-  const assign = {}; (m.teamA?.players || []).forEach(id => { assign[id] = 'A'; }); (m.teamB?.players || []).forEach(id => { assign[id] = 'B'; });
+  const assign = {}; (m.teamA?.all || m.teamA?.players || []).forEach(id => { assign[id] = 'A'; }); (m.teamB?.all || m.teamB?.players || []).forEach(id => { assign[id] = 'B'; });
+  (m.teamA?.players || []).forEach(id => { assign[id] = 'A'; }); (m.teamB?.players || []).forEach(id => { assign[id] = 'B'; });
   const ids = new Set(m.players || []);
-  const pl = (m.players || []).map(id => ({ id, name: m.names?.[id] || S.members[id]?.name || '—' }));
+  const pl = (m.players || []).map(id => ({ id, name: m.names?.[id] || nameOf(id) }));
   if (m.sid === S.sid) playersOf(S.att).forEach(p => { if (!ids.has(p.uid)) pl.push({ id: p.uid, name: p.name }); });
-  E = { id: m.id, sid: m.sid, no: m.no || 1, a: m.teamA?.name || 'A', b: m.teamB?.name || 'B', ia: 0, ib: 1, assign, scoreA: m.scoreA, scoreB: m.scoreB,
+  E = { id: m.id, sid: m.sid, no: m.no || 1, a: m.teamA?.name || 'A', b: m.teamB?.name || 'B', at: m.teamA?.title || '', bt: m.teamB?.title || '', ia: 0, ib: 1, assign, scoreA: m.scoreA, scoreB: m.scoreB,
     goals: (m.goals || []).map(g => ({ ...g })), saves: { ...(m.saves || {}) }, pens: m.pens ? { ...m.pens } : null, pool: pl, date: m.date };
   openModal(editorHtml);
 };
@@ -362,21 +382,21 @@ function editorHtml() {
   const s = sessOf(), tms = s?.teams || [];
   const pn = id => esc(E.pool.find(p => p.id === id)?.name || '—');
   const as = assigned();
-  const tOpt = (sel) => tms.map((tm, i) => `<option value="${i}" ${sel === i ? 'selected' : ''}>${esc(tm.name)}</option>`).join('');
-  const stepper = (k, label, score) => `<div style="text-align:center;flex:1"><div class="small mute">${t('team')} ${esc(label)}</div>
+  const tOpt = (sel) => tms.map((tm, i) => `<option value="${i}" ${sel === i ? 'selected' : ''}>${tl(tm)}</option>`).join('');
+  const stepper = (k, label, score) => `<div style="text-align:center;flex:1"><div class="small mute">${t('team')} ${label}</div>
     <div style="display:flex;align-items:center;justify-content:center;gap:8px"><button class="btn sm" data-act="meScore" data-k="${k}" data-d="-1">-</button><b class="big" dir="ltr">${score}</b><button class="btn sm" data-act="meScore" data-k="${k}" data-d="1">+</button></div></div>`;
-  const pOpts = as.map(p => `<option value="${esc(p.id)}">${esc(p.name)} (${esc(teamOf(p.id) === 'A' ? E.a : E.b)})</option>`).join('');
+  const pOpts = as.map(p => `<option value="${esc(p.id)}">${esc(p.name)} (${teamOf(p.id) === 'A' ? tlab(E.a, E.at) : tlab(E.b, E.bt)})</option>`).join('');
   return `<h2>${t('match')} ${E.no}</h2>
   ${!E.id && tms.length >= 2 ? `<div class="grid2"><div><label>${t('team')} A</label><select data-chg="meTeamA">${tOpt(E.ia)}</select></div><div><label>${t('team')} B</label><select data-chg="meTeamB">${tOpt(E.ib)}</select></div></div>` : ''}
-  <div class="card" style="margin:12px 0"><div style="display:flex;align-items:center;gap:6px">${stepper('A', E.a, E.scoreA)}<b>-</b>${stepper('B', E.b, E.scoreB)}</div>
+  <div class="card" style="margin:12px 0"><div style="display:flex;align-items:center;gap:6px">${stepper('A', tlab(E.a, E.at), E.scoreA)}<b>-</b>${stepper('B', tlab(E.b, E.bt), E.scoreB)}</div>
     ${E.scoreA === E.scoreB ? `<div class="chk" style="margin-top:12px"><input type="checkbox" id="me_pens" data-chg="mePens" ${E.pens ? 'checked' : ''}><label for="me_pens">${t('pens_played')}</label></div>
       ${E.pens ? `<div class="grid2" dir="ltr"><input data-inp="mePA" type="text" inputmode="numeric" lang="en" value="${E.pens.a}"><input data-inp="mePB" type="text" inputmode="numeric" lang="en" value="${E.pens.b}"></div>` : ''}` : ''}</div>
   <b>${t('lineups')}</b>
   ${E.pool.map(p => `<div class="li"><div>${esc(p.name)}</div><select style="width:110px" data-chg="meAssign" data-id="${esc(p.id)}">
-    <option value="">—</option><option value="A" ${teamOf(p.id) === 'A' ? 'selected' : ''}>${t('team')} ${esc(E.a)}</option><option value="B" ${teamOf(p.id) === 'B' ? 'selected' : ''}>${t('team')} ${esc(E.b)}</option></select></div>`).join('')}
+    <option value="">—</option><option value="A" ${teamOf(p.id) === 'A' ? 'selected' : ''}>${t('team')} ${tlab(E.a, E.at)}</option><option value="B" ${teamOf(p.id) === 'B' ? 'selected' : ''}>${t('team')} ${tlab(E.b, E.bt)}</option></select></div>`).join('')}
   ${feat('scorers') && as.length ? `<h3 style="margin:16px 0 4px">${t('goals')}</h3>
     ${E.goals.map((g, i) => `<div class="li"><div><b>${pn(g.uid)}</b>${g.og ? ` <span class="tag warn">${t('own_goal')}</span>` : ''}${g.penalty ? ` <span class="tag gold">${t('penalty')}</span>` : ''}
-      ${g.assist ? `<div class="mute small">${t('assist_by')}: ${pn(g.assist)}</div>` : ''}</div><span class="tag">${esc(g.team === 'A' ? E.a : E.b)}</span><button class="btn sm danger" data-act="meDelGoal" data-i="${i}">${icon('x')}</button></div>`).join('')}
+      ${g.assist ? `<div class="mute small">${t('assist_by')}: ${pn(g.assist)}</div>` : ''}</div><span class="tag">${g.team === 'A' ? tlab(E.a, E.at) : tlab(E.b, E.bt)}</span><button class="btn sm danger" data-act="meDelGoal" data-i="${i}">${icon('x')}</button></div>`).join('')}
     <div class="card" style="margin:8px 0"><label style="margin-top:0">${t('scorer')}</label><select id="mg_sc">${pOpts}</select>
     <label>${t('assist')}</label><select id="mg_as"><option value="">—</option>${pOpts}</select>
     <div class="chk"><input type="checkbox" id="mg_pen"><label for="mg_pen">${t('penalty')}</label></div>
@@ -425,8 +445,8 @@ ACTIONS.meSave = async () => {
   const goals = E.goals.filter(g => inSet.has(g.uid));
   const saves = {}; Object.entries(E.saves).forEach(([id, n]) => { if (inSet.has(id)) saves[id] = n; });
   const data = {
-    no: E.no, teamA: { name: E.a, players: as.filter(p => teamOf(p.id) === 'A').map(p => p.id) },
-    teamB: { name: E.b, players: as.filter(p => teamOf(p.id) === 'B').map(p => p.id) },
+    no: E.no, teamA: { name: E.a, title: E.at || '', players: as.filter(p => teamOf(p.id) === 'A').map(p => p.id), all: as.filter(p => teamOf(p.id) === 'A').map(p => p.id) },
+    teamB: { name: E.b, title: E.bt || '', players: as.filter(p => teamOf(p.id) === 'B').map(p => p.id), all: as.filter(p => teamOf(p.id) === 'B').map(p => p.id) },
     scoreA: E.scoreA, scoreB: E.scoreB, pens: E.scoreA === E.scoreB ? E.pens : null, goals, saves, players: ids, names,
     by: S.user.uid, updatedAt: F.serverTimestamp()
   };
@@ -503,20 +523,20 @@ export function refAfterRender() {
 ACTIONS.refSetup = () => {
   const s = sessOf(), pl = playersOf(S.att);
   if (pl.length < 2) { toast(t('need_players')); return; }
-  E = { id: null, no: S.smatches.reduce((m, x) => Math.max(m, x.no || 0), 0) + 1, a: 'A', b: 'B', ia: 0, ib: 1, assign: {}, scoreA: 0, scoreB: 0, goals: [], saves: {}, pens: null,
+  E = { id: null, no: S.smatches.reduce((m, x) => Math.max(m, x.no || 0), 0) + 1, a: 'A', b: 'B', at: '', bt: '', ia: 0, ib: 1, assign: {}, scoreA: 0, scoreB: 0, goals: [], saves: {}, pens: null,
     pool: pl.map(p => ({ id: p.uid, name: p.name })), mins: S.g.matchMinutes ?? 15 };
   if (s.teams?.length >= 2) fillFromTeams();
   openModal(refSetupHtml);
 };
 function refSetupHtml() {
   const s = sessOf(), tms = s?.teams || [];
-  const tOpt = sel => tms.map((tm, i) => `<option value="${i}" ${sel === i ? 'selected' : ''}>${esc(tm.name)}</option>`).join('');
+  const tOpt = sel => tms.map((tm, i) => `<option value="${i}" ${sel === i ? 'selected' : ''}>${tl(tm)}</option>`).join('');
   return `<h2>${t('start_live')}</h2>
   ${tms.length >= 2 ? `<div class="grid2"><div><label>${t('team')} A</label><select data-chg="meTeamA">${tOpt(E.ia)}</select></div><div><label>${t('team')} B</label><select data-chg="meTeamB">${tOpt(E.ib)}</select></div></div>` : ''}
   <label>${t('match_minutes')}</label>${numIn('rf_min', E.mins)}
   <b style="display:block;margin-top:14px">${t('lineups')}</b>
   ${E.pool.map(p => `<div class="li"><div>${esc(p.name)}</div><select style="width:110px" data-chg="meAssign" data-id="${esc(p.id)}">
-    <option value="">-</option><option value="A" ${teamOf(p.id) === 'A' ? 'selected' : ''}>${t('team')} ${esc(E.a)}</option><option value="B" ${teamOf(p.id) === 'B' ? 'selected' : ''}>${t('team')} ${esc(E.b)}</option></select></div>`).join('')}
+    <option value="">-</option><option value="A" ${teamOf(p.id) === 'A' ? 'selected' : ''}>${t('team')} ${tlab(E.a, E.at)}</option><option value="B" ${teamOf(p.id) === 'B' ? 'selected' : ''}>${t('team')} ${tlab(E.b, E.bt)}</option></select></div>`).join('')}
   <div class="row" style="margin-top:16px"><button class="btn primary" data-act="refStart">${t('start_live')}</button><button class="btn" data-act="closeModal">${t('cancel')}</button></div>`;
 }
 ACTIONS.refStart = async () => {
@@ -528,7 +548,8 @@ ACTIONS.refStart = async () => {
   as.forEach(p => { names[p.id] = p.name; });
   b.set(ref, {
     sid: S.sid, no: E.no, date: startMs(sessOf()), status: 'live', durationSec: mins * 60, elapsedMs: 0, running: false, lastStart: 0, timeUp: false,
-    teamA: { name: E.a, players: as.filter(p => teamOf(p.id) === 'A').map(p => p.id) }, teamB: { name: E.b, players: as.filter(p => teamOf(p.id) === 'B').map(p => p.id) },
+    teamA: { name: E.a, title: E.at || '', players: as.filter(p => teamOf(p.id) === 'A').map(p => p.id), all: as.filter(p => teamOf(p.id) === 'A').map(p => p.id) },
+    teamB: { name: E.b, title: E.bt || '', players: as.filter(p => teamOf(p.id) === 'B').map(p => p.id), all: as.filter(p => teamOf(p.id) === 'B').map(p => p.id) },
     scoreA: 0, scoreB: 0, pens: null, goals: [], saves: {}, events: [], players: as.map(p => p.id), names, by: S.user.uid, createdAt: F.serverTimestamp(), updatedAt: F.serverTimestamp()
   });
   addAudit(b, 'match_live', `#${E.no} ${E.a} - ${E.b}`);
@@ -545,8 +566,8 @@ export function refereeView() {
   const panel = k => {
     const tm = k === 'A' ? m.teamA : m.teamB;
     const b = (type, label, cls = '') => `<button class="btn ${cls}" data-act="refEv" data-team="${k}" data-type="${type}">${label}</button>`;
-    return `<div class="tile" style="text-align:center"><b>${t('team')} ${esc(tm.name)}</b><div class="big" dir="ltr">${k === 'A' ? m.scoreA : m.scoreB}</div>
-      ${adm && live ? `<div style="display:grid;gap:6px;margin-top:8px">${b('goal', t('goal_btn'), 'primary')}${b('yellow', t('yellow_btn'))}${b('red', t('red_btn'))}${b('save', t('save_btn'))}</div>` : ''}</div>`;
+    return `<div class="tile" style="text-align:center"><b>${t('team')} ${tl(tm)}</b><div class="big" dir="ltr">${k === 'A' ? m.scoreA : m.scoreB}</div>
+      ${adm && live ? `<div style="display:grid;gap:6px;margin-top:8px">${b('goal', t('goal_btn'), 'primary')}${b('yellow', t('yellow_btn'))}${b('red', t('red_btn'))}${b('save', t('save_btn'))}${b('sub', icon('swap') + ' ' + t('sub_btn'), 'dark')}</div>` : ''}</div>`;
   };
   const events = [...(m.events || [])].reverse();
   let h = bar(`${t('match')} ${m.no || ''}`, true, live ? `<span class="tag warn" style="background:#fff;margin-inline-end:8px">${t('live')}</span>` : '');
@@ -556,7 +577,7 @@ export function refereeView() {
       <button class="btn" data-act="refAddMin">${t('add_minute')}</button></div>` : ''}</div>`;
   h += `<div class="grid2" style="margin:12px 16px">${panel('A')}${panel('B')}</div>`;
   if (m.scoreA === m.scoreB && (m.pens || (adm && live))) {
-    h += `<div class="card"><b>${t('shootout')}</b>${m.pens ? `<div class="grid2" style="margin-top:8px">${['a', 'b'].map(k => `<div style="text-align:center"><div class="small mute">${t('team')} ${esc(k === 'a' ? m.teamA.name : m.teamB.name)}</div>
+    h += `<div class="card"><b>${t('shootout')}</b>${m.pens ? `<div class="grid2" style="margin-top:8px">${['a', 'b'].map(k => `<div style="text-align:center"><div class="small mute">${t('team')} ${tl(k === 'a' ? m.teamA : m.teamB)}</div>
       <div style="display:flex;justify-content:center;align-items:center;gap:8px">${adm && live ? `<button class="btn sm" data-act="refPen" data-k="${k}" data-d="-1">-</button>` : ''}<b class="big" dir="ltr">${m.pens[k]}</b>${adm && live ? `<button class="btn sm" data-act="refPen" data-k="${k}" data-d="1">+</button>` : ''}</div></div>`).join('')}</div>` : ''}
       ${adm && live ? `<div class="row"><button class="btn" data-act="refPens">${m.pens ? t('remove_shootout') : t('start_shootout')}</button></div>` : ''}</div>`;
   }
@@ -606,8 +627,8 @@ ACTIONS.refDelEv = el => confirmBox(t('delete_event_q'), async () => {
 // ---- event sheets ----
 ACTIONS.refEv = el => {
   const m = liveOf(S.nav.mid); if (!m || m.status !== 'live') return;
-  R = { team: el.dataset.team, type: el.dataset.type, og: false, penalty: false, step: 'pick', scorer: '' };
-  openModal(refEvHtml);
+  R = { team: el.dataset.team, type: el.dataset.type, og: false, penalty: false, step: 'pick', scorer: '', out: '' };
+  openModal(R.type === 'sub' ? refSubHtml : refEvHtml);
 };
 function refEvHtml() {
   const m = liveOf(S.nav.mid), tm = R.team === 'A' ? m.teamA : m.teamB, op = R.team === 'A' ? m.teamB : m.teamA;
@@ -618,13 +639,13 @@ function refEvHtml() {
     body = `<h2>${t('pick_assist')}</h2>${tm.players.filter(id => id !== R.scorer).map(id => btn(id)).join('')}
       <button class="btn block" style="width:100%;margin:6px 0" data-act="refNoAssist">${t('no_assist')}</button>`;
   } else if (R.type === 'goal') {
-    body = `<h2>${t('goal_btn')} - ${t('team')} ${esc(tm.name)}</h2>
+    body = `<h2>${t('goal_btn')} - ${t('team')} ${tl(tm)}</h2>
       <div class="row" style="margin-top:0"><button class="btn ${R.penalty ? 'primary' : ''}" data-act="refTog" data-k="penalty">${t('penalty')}</button>
       <button class="btn ${R.og ? 'primary' : ''}" data-act="refTog" data-k="og">${t('own_goal')}</button></div>
-      <h3 style="margin:12px 0 4px">${t('pick_scorer')}${R.og ? ` (${t('team')} ${esc(op.name)})` : ''}</h3>${(R.og ? op : tm).players.map(id => btn(id)).join('')}`;
+      <h3 style="margin:12px 0 4px">${t('pick_scorer')}${R.og ? ` (${t('team')} ${tl(op)})` : ''}</h3>${(R.og ? op : tm).players.map(id => btn(id)).join('')}`;
   } else {
     const title = { yellow: t('yellow_btn'), red: t('red_btn'), save: t('save_btn') }[R.type];
-    body = `<h2>${title} - ${t('team')} ${esc(tm.name)}</h2>${tm.players.map(id => btn(id, R.type === 'yellow' && yc(id) ? `<span class="tag gold">${t('yellow_btn')} x${yc(id)}</span>` : '')).join('')}`;
+    body = `<h2>${title} - ${t('team')} ${tl(tm)}</h2>${tm.players.map(id => btn(id, R.type === 'yellow' && yc(id) ? `<span class="tag gold">${t('yellow_btn')} x${yc(id)}</span>` : '')).join('')}`;
   }
   return body + `<div class="row"><button class="btn" data-act="closeModal">${t('cancel')}</button></div>`;
 }
@@ -648,3 +669,40 @@ ACTIONS.refPick = async el => {
   return commitEv({ uid: id });
 };
 ACTIONS.refNoAssist = () => commitEv({ uid: R.scorer, assist: '', penalty: R.penalty, og: R.og });
+
+// ---- substitution (any team, while the match is live) ----
+function refSubHtml() {
+  const m = liveOf(S.nav.mid), k = R.team, tm = k === 'A' ? m.teamA : m.teamB, op = k === 'A' ? m.teamB : m.teamA;
+  const nmOf = id => esc(m.names?.[id] || nameOf(id));
+  const btn = (act, id, extra = '') => `<button class="btn block" style="width:100%;margin:6px 0;justify-content:space-between" data-act="${act}" data-id="${esc(id)}"><span>${nmOf(id)}</span>${extra}</button>`;
+  if (R.step === 'pick' || R.step === 'out') {
+    return `<h2>${t('sub_btn')} - ${t('team')} ${tl(tm)}</h2><h3 style="margin:8px 0 4px">${t('pick_out')}</h3>
+      ${tm.players.map(id => btn('refSubOut', id)).join('') || `<div class="empty">—</div>`}
+      <div class="row"><button class="btn" data-act="closeModal">${t('cancel')}</button></div>`;
+  }
+  const inLineup = new Set([...m.teamA.players, ...m.teamB.players]);
+  const bench = playersOf(S.att).filter(p => !inLineup.has(p.uid) && p.uid !== R.out);
+  const outName = nmOf(R.out);
+  return `<h2>${t('sub_btn')} - ${t('team')} ${tl(tm)}</h2><div class="mute small">${t('sub_out')}: <b>${outName}</b></div>
+    <h3 style="margin:12px 0 4px">${t('pick_in')}</h3>
+    <div class="mute small">${t('bench')}</div>${bench.map(p => btn('refSubIn', p.uid)).join('') || `<div class="mute small" style="padding:6px 0">${t('bench_empty')}</div>`}
+    <div class="mute small" style="margin-top:10px">${t('from_other_team')} (${tl(op)})</div>${op.players.map(id => btn('refSubIn', id)).join('') || `<div class="mute small" style="padding:6px 0">—</div>`}
+    <div class="row"><button class="btn" data-act="refSubBack">${t('back')}</button><button class="btn" data-act="closeModal">${t('cancel')}</button></div>`;
+}
+ACTIONS.refSubOut = el => { R.out = el.dataset.id; R.step = 'in'; redraw(); };
+ACTIONS.refSubBack = () => { R.step = 'out'; redraw(); };
+ACTIONS.refSubIn = async el => {
+  const m = liveOf(S.nav.mid); if (!m || m.status !== 'live' || !R.out) return;
+  const k = R.team, inId = el.dataset.id, outId = R.out;
+  const mine = { ...(k === 'A' ? m.teamA : m.teamB) }, other = { ...(k === 'A' ? m.teamB : m.teamA) };
+  mine.all = [...new Set([...(mine.all || mine.players), inId])];
+  other.all = other.all || other.players;
+  mine.players = mine.players.map(x => (x === outId ? inId : x));
+  other.players = other.players.filter(x => x !== inId);
+  const names = { ...(m.names || {}) }; if (!names[inId]) names[inId] = nameOf(inId);
+  const teamA = k === 'A' ? mine : other, teamB = k === 'A' ? other : mine;
+  const ev = { id: evId(), type: 'sub', team: k, t: Math.floor(elapsedOf(m) / 1000), out: outId, in: inId };
+  const events = [...(m.events || []), ev];
+  await F.updateDoc(gref('matches', m.id), { events, teamA, teamB, names, players: [...new Set([...teamA.all, ...teamB.all])], updatedAt: F.serverTimestamp() });
+  closeModal(); try { navigator.vibrate && navigator.vibrate(60); } catch (e) {}
+};

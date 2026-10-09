@@ -45,6 +45,9 @@ function membersList() {
       <div><b>${esc(m.name)}</b> ${m.role !== 'player' ? `<span class="tag">${t('role_' + m.role)}</span>` : ''}</div>
       ${adm ? `<span class="amt ${b < 0 ? 'neg' : 'pos'}" dir="ltr">${fmtNum(b)}</span>` : ''}<span class="mute">›</span></div>`;
   }).join('')}</div>`;
+  const gl = Object.values(S.guests).sort((x, y) => x.name.localeCompare(y.name));
+  if (gl.length) h += `<h3>${t('guests')} (${gl.length})</h3><div class="card">${gl.map(g => `<div class="li" data-act="openMember" data-uid="${esc(g.id)}" style="cursor:pointer">${av(g.name, '')}
+      <div><b>${esc(g.name)}</b> <span class="tag gold">${t('role_guest')}</span></div><span class="mute">›</span></div>`).join('')}</div>`;
   if (adm) {
     const code = S.g.inviteCode || '';
     h += `<h3>${t('invite')}</h3><div class="card"><div class="invite" dir="ltr">${esc(code)}</div>

@@ -89,6 +89,9 @@ ar: {
   ach_apps10: '10 مباريات', ach_apps10_d: 'لعب 10 مباريات', ach_apps25: '25 مباراة', ach_apps25_d: 'لعب 25 مباراة', ach_apps50: '50 مباراة', ach_apps50_d: 'لعب 50 مباراة',
   ach_top3goals: 'من أفضل 3 هدافين', ach_top3goals_d: 'ضمن أول 3 في الهدافين', ach_top3assists: 'من أفضل 3 صانعي أهداف', ach_top3assists_d: 'ضمن أول 3 في الأسيست',
   ach_top3saves: 'من أفضل 3 حراس', ach_top3saves_d: 'ضمن أول 3 في التصديات'
+  ,sub_btn: 'تغيير لاعب', sub_out: 'خارج', pick_out: 'اختار اللاعب الخارج', pick_in: 'اختار اللاعب الداخل', bench: 'على الدكة (مسجلين في الحصة)', bench_empty: 'مفيش لاعبين على الدكة', from_other_team: 'من الفريق الآخر', back: 'رجوع',
+  team_title_ph: 'اسم الفريق (اختياري) مثل: ملوك الملعب', known_guest: 'ضيف سابق', or_new_guest: 'أو اكتب اسم ضيف جديد',
+  role_guest: 'ضيف', guests: 'الضيوف', rename_guest: 'تعديل اسم الضيف', au_guest_rename: 'تعديل اسم ضيف'
 },
 en: {
   app_name: 'Sa3et Kora', tagline: 'Organize your football hour with friends: attendance, balances, results and stats',
@@ -179,5 +182,8 @@ en: {
   ach_apps10: '10 games', ach_apps10_d: 'Played 10 games', ach_apps25: '25 games', ach_apps25_d: 'Played 25 games', ach_apps50: '50 games', ach_apps50_d: 'Played 50 games',
   ach_top3goals: 'Top 3 scorer', ach_top3goals_d: 'In the top 3 scorers', ach_top3assists: 'Top 3 assister', ach_top3assists_d: 'In the top 3 for assists',
   ach_top3saves: 'Top 3 keeper', ach_top3saves_d: 'In the top 3 for saves'
+  ,sub_btn: 'Substitution', sub_out: 'Off', pick_out: 'Pick the player going off', pick_in: 'Pick the player coming on', bench: 'On the bench (signed up for this session)', bench_empty: 'No one on the bench', from_other_team: 'From the other team', back: 'Back',
+  team_title_ph: 'Team name (optional), e.g. Pitch Kings', known_guest: 'Previous guest', or_new_guest: 'Or type a new guest name',
+  role_guest: 'Guest', guests: 'Guests', rename_guest: 'Rename guest', au_guest_rename: 'Guest renamed'
 }
 };
