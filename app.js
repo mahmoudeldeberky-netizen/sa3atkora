@@ -2,7 +2,7 @@ import { S, A, F, auth, db, ACTIONS, CHANGES, INPUTS, t, setLang, esc, av, val, 
   isAdmin, gref, gcol, genCode, resizeImage, $ } from './core.js';
 import { groupTab } from './admin.js';
 import { matchesTab, sessionView, refereeView, refAfterRender } from './session.js';
-import { statsTab, memberBody, memberView } from './stats.js';
+import { statsTab, memberBody, memberView, compute } from './stats.js';
 import { firebaseConfig } from './firebase-config.js';
 
 // ---------- boot ----------
@@ -84,7 +84,7 @@ function startActive() {
   S.active = true; const gid = S.gid;
   S.subs.push(F.onSnapshot(F.doc(db, 'groups', gid), s => { S.g = s.exists() ? { id: s.id, ...s.data() } : null; render(); }, () => {}));
   S.subs.push(F.onSnapshot(F.collection(db, 'groups', gid, 'members'), s => { S.members = {}; s.docs.forEach(d => { S.members[d.id] = d.data(); }); render(); }, () => {}));
-  S.subs.push(F.onSnapshot(F.collection(db, 'groups', gid, 'pos'), s => { S.pos = {}; s.docs.forEach(d => { S.pos[d.id] = d.data().pos; }); render(); }, () => {}));
+  S.subs.push(F.onSnapshot(F.collection(db, 'groups', gid, 'pos'), s => { S.pos = {}; s.docs.forEach(d => { S.pos[d.id] = d.data().pos; }); if (S.stats) S.stats.per = compute(S.stats.matches); render(); }, () => {}));
   S.subs.push(F.onSnapshot(F.collection(db, 'groups', gid, 'guests'), s => { S.guests = {}; s.docs.forEach(d => { S.guests[d.id] = { id: d.id, ...d.data() }; }); render(); }, () => {}));
   S.subs.push(F.onSnapshot(F.query(F.collection(db, 'groups', gid, 'sessions'), F.orderBy('startsAt', 'desc'), F.limit(40)), s => {
     S.sessions = s.docs.map(d => ({ id: d.id, ...d.data() })); syncOpenAtt(); render();

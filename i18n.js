@@ -97,6 +97,9 @@ ar: {
   clean_sheets: 'شباك نظيفة', conceded: 'أهداف دخلت مرماه', rk_cs: 'شباك نظيفة',
   ach_cs1: 'شباك نظيفة', ach_cs1_d: 'ماتش من غير ما تدخل عليك أهداف', ach_cs5: '5 شباك نظيفة', ach_cs5_d: 'حافظت على شباكك 5 مرات', ach_cs10: 'سور الفريق', ach_cs10_d: '10 شباك نظيفة', ach_top3cs: 'من أفضل 3 في الدفاع', ach_top3cs_d: 'ضمن أول 3 في الشباك النظيفة'
   ,suspended: 'مطرودون مؤقتاً', red_duration: 'مدة الطرد', red_hint: 'الحد الأقصى {m} دقيقة، واللاعب يرجع بعدها. تقدر تختار وقت أقل.', red_max_minutes: 'أقصى مدة للطرد (بالدقايق)'
+  ,delete_entry_q: 'حذف القيد نهائياً؟ هيتلغي أثره على الرصيد والصندوق ويتمسح من السجل.', delete_rev_missing: 'القيد ده اتعكس وقيده العكسي مش ظاهر هنا. احذف القيد العكسي الأول أو حدّث الصفحة.', au_ledger_delete: 'حذف قيد نهائياً',
+  shootout_kicks: 'عدد ضربات الجزاء الأساسية لكل فريق', so_hint: 'أساسي {n} ضربات لكل فريق، ولو التعادل استمر كمّلوا ضربة ضربة.', so_add: 'تسجيل ضربة', so_undo: 'تراجع', so_pick_shooter: 'اختار اللاعب اللي هيشوط', so_pick_gk: 'مين حارس المرمى اللي تصدى؟',
+  so_goal: 'سجّل', so_saved: 'تصدى الحارس', so_miss: 'أضاع', so_saved_by: 'تصدى', so_shots: 'ضربات ترجيحية (سجّل / شاط)', so_saves: 'تصديات ترجيحية', match_roles: 'المراكز في الماتش', match_roles_hint: 'الكلين شيت والأهداف المستقبلة بتتحسب لمين لعب حارس أو مدافع في الماتش ده.'
 },
 en: {
   app_name: 'Sa3et Kora', tagline: 'Organize your football hour with friends: attendance, balances, results and stats',
@@ -195,5 +198,8 @@ en: {
   clean_sheets: 'Clean sheets', conceded: 'Goals conceded', rk_cs: 'Clean sheets',
   ach_cs1: 'Clean sheet', ach_cs1_d: 'A match without conceding', ach_cs5: '5 clean sheets', ach_cs5_d: 'Kept 5 clean sheets', ach_cs10: 'The wall', ach_cs10_d: '10 clean sheets', ach_top3cs: 'Top 3 defender', ach_top3cs_d: 'In the top 3 for clean sheets'
   ,suspended: 'Sent off (temporary)', red_duration: 'Suspension length', red_hint: 'Maximum {m} min, then the player may return. You can pick a shorter time.', red_max_minutes: 'Max red card length (minutes)'
+  ,delete_entry_q: 'Delete this entry permanently? Its effect on the balance and fund will be removed and it will disappear from the ledger.', delete_rev_missing: 'This entry was reversed and its reversal is not loaded here. Delete the reversal first or refresh.', au_ledger_delete: 'Entry permanently deleted',
+  shootout_kicks: 'Base shootout kicks per team', so_hint: 'Base {n} kicks per team; if still level, continue one kick at a time.', so_add: 'Record kick', so_undo: 'Undo', so_pick_shooter: 'Pick the shooter', so_pick_gk: 'Which goalkeeper saved it?',
+  so_goal: 'Scored', so_saved: 'Saved by keeper', so_miss: 'Missed', so_saved_by: 'Saved by', so_shots: 'Shootout kicks (scored / taken)', so_saves: 'Shootout saves', match_roles: 'Roles in this match', match_roles_hint: 'Clean sheets and goals conceded count for whoever plays as goalkeeper or defender in this match.'
 }
 };

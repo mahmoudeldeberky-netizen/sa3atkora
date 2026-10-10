@@ -159,7 +159,8 @@ function accountsView() {
         <div class="mute small">${esc(l.byName || '')}</div></div>
         <div style="text-align:end"><div class="amt ${l.amount < 0 ? 'neg' : (l.amount > 0 ? 'pos' : '')}" dir="ltr">${l.amount ? sgn(l.amount) : ''}</div>
         ${l.fund ? `<div class="mute small" dir="ltr">${t('fund')}: ${sgn(l.fund)}</div>` : ''}
-        ${!l.reversed && l.type !== 'reversal' ? `<button class="btn sm" data-act="reverse" data-id="${esc(l.id)}">${t('reverse')}</button>` : ''}</div></div>`;
+        ${!l.reversed && l.type !== 'reversal' ? `<button class="btn sm" data-act="reverse" data-id="${esc(l.id)}">${t('reverse')}</button>` : ''}
+        ${isOwner() ? `<button class="btn sm danger" data-act="delEntry" data-id="${esc(l.id)}">${t('delete')}</button>` : ''}</div></div>`;
     }).join('') : `<div class="empty">${t('no_history')}</div>`}</div>`;
 }
 
@@ -190,6 +191,25 @@ ACTIONS.savePay = async () => {
   bumpFund(b, fund);
   addAudit(b, 'ledger_' + type, `${type === 'expense' ? '' : nm + ' '}${fmtNum(amt)}${note ? ' · ' + note : ''}`);
   await b.commit(); closeModal(); toast(t('saved'));
+};
+// حذف نهائي للقيد (المالك فقط): بيلغي أثره على الرصيد والصندوق ويمسحه من السجل
+ACTIONS.delEntry = el => {
+  const o = S.ledger.find(x => x.id === el.dataset.id); if (!o || !isOwner()) return;
+  const revs = o.type === 'reversal' ? [] : S.ledger.filter(x => x.type === 'reversal' && x.ref === o.id);
+  if (o.reversed && !revs.length) { toast(t('delete_rev_missing')); return; }
+  confirmBox(t('delete_entry_q'), async () => {
+    const b = F.writeBatch(db); let fund = 0;
+    const undo = e => { if (e.uid && e.amount) b.set(gref('balances', e.uid), { uid: e.uid, balance: F.increment(-e.amount) }, { merge: true }); fund -= e.fund || 0; };
+    if (o.type === 'reversal') {
+      undo(o); b.delete(gref('ledger', o.id));
+      if (o.ref && S.ledger.some(x => x.id === o.ref)) b.update(gref('ledger', o.ref), { reversed: false });
+    } else if (revs.length) {
+      b.delete(gref('ledger', o.id)); revs.forEach(r => b.delete(gref('ledger', r.id)));
+    } else { undo(o); b.delete(gref('ledger', o.id)); }
+    bumpFund(b, fund);
+    addAudit(b, 'ledger_delete', `${t('lt_' + o.type)} ${o.uid ? (S.members[o.uid]?.name || '') : (o.name || '')} ${fmtNum(o.amount || o.fund)}`);
+    await b.commit(); toast(t('saved'));
+  }, true);
 };
 ACTIONS.reverse = el => {
   const o = S.ledger.find(x => x.id === el.dataset.id); if (!o) return;
@@ -279,7 +299,8 @@ function settingsView() {
     <div><label>${t('team_size')}</label>${numIn('st_team', g.teamSize ?? 6)}</div></div>
     <div class="grid2"><div><label>${t('match_minutes')}</label>${numIn('st_minutes', g.matchMinutes ?? 15)}</div>
     <div><label>${t('tier_count')}</label>${numIn('st_tiers', g.tierCount ?? 3)}</div></div>
-    <label>${t('red_max_minutes')}</label>${numIn('st_red', g.redMinutes ?? 2)}
+    <div class="grid2"><div><label>${t('red_max_minutes')}</label>${numIn('st_red', g.redMinutes ?? 2)}</div>
+    <div><label>${t('shootout_kicks')}</label>${numIn('st_kicks', g.shootoutKicks ?? 3)}</div></div>
     <div class="grid2"><div><label>${t('sched_day')}</label><select id="st_dow">${dowOpts(sc.dow ?? 4)}</select></div>
     <div><label>${t('sched_time')}</label><input id="st_time" type="time" dir="ltr" lang="en" value="${esc(sc.time || '21:00')}"></div></div>
     <div class="chk" style="margin-top:14px"><input type="checkbox" id="st_results" ${feat('results') ? 'checked' : ''}><label for="st_results">${t('feat_results')}</label></div>
@@ -291,7 +312,7 @@ ACTIONS.saveSettings = async () => {
   const data = {
     name, currency: val('st_cur').trim(), defaultFee: num(val('st_fee'), 10), hourCost: num(val('st_cost'), 70),
     maxPlayers: Math.max(1, Math.round(num(val('st_max'), 18))), cancelHours: Math.max(0, Math.round(num(val('st_cancel'), 12))),
-    teamSize: Math.max(1, Math.round(num(val('st_team'), 6))), matchMinutes: Math.max(1, Math.round(num(val('st_minutes'), 15))), tierCount: Math.min(6, Math.max(2, Math.round(num(val('st_tiers'), 3)))), redMinutes: Math.min(10, Math.max(0.5, Math.round(num(val('st_red'), 2) * 2) / 2)),
+    teamSize: Math.max(1, Math.round(num(val('st_team'), 6))), matchMinutes: Math.max(1, Math.round(num(val('st_minutes'), 15))), tierCount: Math.min(6, Math.max(2, Math.round(num(val('st_tiers'), 3)))), shootoutKicks: Math.min(11, Math.max(1, Math.round(num(val('st_kicks'), 3)))), redMinutes: Math.min(10, Math.max(0.5, Math.round(num(val('st_red'), 2) * 2) / 2)),
     schedule: { dow: +val('st_dow'), time: val('st_time') || '21:00' },
     features: { results: checked('st_results'), scorers: checked('st_scorers') }
   };

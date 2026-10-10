@@ -14,7 +14,7 @@ export async function loadStats(force = false) {
   } finally { S.statsLoading = false; S.render(); }
 }
 
-function blank() { return { cs: 0, conc: 0, apps: 0, goals: 0, assists: 0, saves: 0, pens: 0, wins: 0, draws: 0, losses: 0, hat: 0, yellow: 0, red: 0, log: [] }; }
+function blank() { return { dm: 0, gm: 0, sg: 0, sm: 0, ss: 0, cs: 0, conc: 0, apps: 0, goals: 0, assists: 0, saves: 0, pens: 0, wins: 0, draws: 0, losses: 0, hat: 0, yellow: 0, red: 0, log: [] }; }
 
 // فترات تواجد كل لاعب في الملعب (للأهداف المستقبلة لما يكون فيه تغييرات)
 function pitchIntervals(m, subs) {
@@ -41,7 +41,9 @@ export function compute(matches) {
       const p = P(id); p.apps++;
       const both = inA.has(id) && inB.has(id), a = both ? curA.has(id) : inA.has(id), b = both ? curB.has(id) : inB.has(id);
       const side = a ? 'A' : (b ? 'B' : '');
-      if (side) {
+      const role = (m.roles ? m.roles[id] : S.pos[id]) || '';
+      if (side && (role === 'gk' || role === 'def')) {
+        p.dm++; if (role === 'gk') p.gm++;
         const against = side === 'A' ? m.scoreB : m.scoreA;
         if (against === 0) p.cs++;
         const subs = (m.events || []).filter(e => e.type === 'sub').sort((x, y) => (x.t || 0) - (y.t || 0));
@@ -51,7 +53,8 @@ export function compute(matches) {
           p.conc += (m.events || []).filter(e => e.type === 'goal' && iv.some(x => x.team !== e.team && (e.t || 0) >= x.from && (e.t || 0) < x.to)).length;
         }
       }
-      const mine = a ? m.scoreA - m.scoreB : (b ? m.scoreB - m.scoreA : 0);
+      let mine = a ? m.scoreA - m.scoreB : (b ? m.scoreB - m.scoreA : 0);
+      if (mine === 0 && m.pens && m.pens.a !== m.pens.b) mine = a ? m.pens.a - m.pens.b : (b ? m.pens.b - m.pens.a : 0);
       if (mine > 0) p.wins++; else if (mine < 0) p.losses++; else p.draws++;
     }
     const inMatch = {};
@@ -63,6 +66,11 @@ export function compute(matches) {
       }
       if (g.assist) { const p = P(g.assist); p.assists++; p.log.push({ m, g, kind: 'assist' }); }
     }
+    for (const k of m.shootout?.kicks || []) {
+      if (!k.uid) continue;
+      const sp = P(k.uid); if (k.res === 'goal') sp.sg++; else sp.sm++;
+      if (k.res === 'saved' && k.gk) P(k.gk).ss++;
+    }
     for (const e of m.events || []) { if (e.type === 'yellow' && e.uid) P(e.uid).yellow++; if (e.type === 'red' && e.uid) P(e.uid).red++; }
     for (const id in inMatch) if (inMatch[id] >= 3) P(id).hat++;
     for (const id in (m.saves || {})) P(id).saves += m.saves[id] || 0;
@@ -70,9 +78,8 @@ export function compute(matches) {
   return per;
 }
 
-export const isDef = id => ['gk', 'def'].includes(S.pos[id]);
 export function ranking(per, key) {
-  return Object.entries(per).filter(([id, v]) => v[key] > 0 && (key !== 'cs' || isDef(id))).sort((a, b) => b[1][key] - a[1][key] || b[1].apps - a[1].apps);
+  return Object.entries(per).filter(([id, v]) => v[key] > 0 && true).sort((a, b) => b[1][key] - a[1][key] || b[1].apps - a[1].apps);
 }
 
 const ACH = [
@@ -98,7 +105,7 @@ export function achievements(uid, per) {
     const r = ranking(per, key).slice(0, 3).map(x => x[0]);
     list.push({ id, ic, on: r.includes(uid) });
   };
-  if (isDef(uid)) { list.push({ id: 'cs1', ic: 'shield', on: p.cs >= 1 }, { id: 'cs5', ic: 'shield', on: p.cs >= 5 }, { id: 'cs10', ic: 'trophy', on: p.cs >= 10 }); top('cs', 'top3cs', 'award'); }
+  list.push({ id: 'cs1', ic: 'shield', on: p.cs >= 1 }, { id: 'cs5', ic: 'shield', on: p.cs >= 5 }, { id: 'cs10', ic: 'trophy', on: p.cs >= 10 }); top('cs', 'top3cs', 'award');
   top('goals', 'top3goals', 'award'); top('assists', 'top3assists', 'award'); top('saves', 'top3saves', 'award');
   return list;
 }
@@ -119,6 +126,7 @@ export function matchModal(id) {
       ${m.pens ? `<div class="tag gold" dir="ltr">${t('pens')}: ${m.pens.a} - ${m.pens.b}</div>` : ''}
     </div>
     <div class="grid2">${team(m.teamA || {})}${team(m.teamB || {})}</div>
+    ${m.shootout?.kicks?.length ? shootoutBlock(m) : ''}
     ${(m.events || []).length ? `<h3 style="margin:14px 0 4px">${t('events')}</h3>` + [...m.events].sort((a, b) => (a.t || 0) - (b.t || 0)).map(e => eventLine(m, e)).join('') : ''}
     ${!(m.events || []).length && (m.goals || []).length ? `<h3 style="margin:14px 0 4px">${t('goals')}</h3>` + m.goals.map(g => `
       <div class="li"><div><b>${nm(g.uid)}</b>${g.og ? ` <span class="tag warn">${t('own_goal')}</span>` : ''}${g.penalty ? ` <span class="tag gold">${t('penalty')}</span>` : ''}
@@ -131,6 +139,11 @@ ACTIONS.openMatch = el => {
   if (m && m.status === 'live') S.go({ view: 'referee', gid: S.gid, sid: m.sid, mid: m.id });
   else matchModal(el.dataset.id);
 };
+export function shootoutBlock(m) {
+  const nm = x => esc(S.members[x]?.name || S.guests[x]?.name || m.names?.[x] || '-');
+  const col = k => `<div class="tile" style="min-width:0;padding:8px"><b>${t('team')} ${tl(k === 'A' ? m.teamA : m.teamB)}</b>${m.shootout.kicks.filter(x => x.team === k).map((x, i) => `<div style="padding:6px 0;border-bottom:1px solid var(--line)"><div style="display:flex;gap:6px;align-items:center"><span class="rk">${i + 1}</span><b class="small" style="min-width:0;overflow-wrap:anywhere">${nm(x.uid)}</b></div><div style="margin-top:3px"><span class="tag ${x.res === 'goal' ? '' : 'warn'}">${t('so_' + x.res)}</span>${x.res === 'saved' && x.gk ? `<div class="mute small">${t('so_saved_by')}: ${nm(x.gk)}</div>` : ''}</div></div>`).join('')}</div>`;
+  return `<h3 style="margin:14px 0 4px">${t('shootout')}</h3><div class="grid2" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">${col('A')}${col('B')}</div>`;
+}
 export function eventLine(m, e, del = false) {
   const nm = id => esc(S.members[id]?.name || S.guests[id]?.name || m.names?.[id] || '-');
   const tn = tl(e.team === 'A' ? m.teamA : m.teamB);
@@ -207,8 +220,10 @@ export function memberBody(uid) {
     <div class="tile"><span class="mute small">${t('hat_tricks')}</span><b>${p.hat}</b></div>
     <div class="tile"><span class="mute small">${t('yellow_cards')}</span><b>${p.yellow}</b></div>
     <div class="tile"><span class="mute small">${t('red_cards')}</span><b>${p.red}</b></div>
-    ${isDef(uid) ? `<div class="tile"><span class="mute small">${t('clean_sheets')}</span><b>${p.cs}</b></div>` : ''}
-    ${S.pos[uid] === 'gk' ? `<div class="tile"><span class="mute small">${t('conceded')}</span><b>${p.conc}</b></div>` : ''}
+    ${p.dm ? `<div class="tile"><span class="mute small">${t('clean_sheets')}</span><b>${p.cs}</b></div>` : ''}
+    ${p.gm ? `<div class="tile"><span class="mute small">${t('conceded')}</span><b>${p.conc}</b></div>` : ''}
+    ${p.sg + p.sm ? `<div class="tile"><span class="mute small">${t('so_shots')}</span><b dir="ltr">${p.sg} / ${p.sg + p.sm}</b></div>` : ''}
+    ${p.ss ? `<div class="tile"><span class="mute small">${t('so_saves')}</span><b>${p.ss}</b></div>` : ''}
   </div>
   <h3>${t('achievements')}</h3>
   <div class="card"><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px">

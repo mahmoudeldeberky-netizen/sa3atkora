@@ -100,7 +100,7 @@ service cloud.firestore {
         allow read: if isAdmin(gid) || (isActive(gid) && resource.data.uid == request.auth.uid);
         allow create: if isAdmin(gid) && request.resource.data.by == request.auth.uid;
         allow update: if isAdmin(gid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reversed']);
-        allow delete: if false;
+        allow delete: if isOwner(gid);
       }
 
       // ---------- سجل المراجعة: إضافة فقط ----------
