@@ -134,7 +134,8 @@ service cloud.firestore {
       // ---------- الحصص (المواعيد) والحضور ----------
       match /sessions/{sid} {
         allow read: if isActive(gid);
-        allow write: if isAdmin(gid);
+        allow create, update: if isAdmin(gid);
+        allow delete: if isOwner(gid);
 
         match /attendance/{uid} {
           allow read: if isActive(gid);

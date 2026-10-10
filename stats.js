@@ -1,4 +1,4 @@
-import { S, F, ACTIONS, CHANGES, POS, tierCount, t, esc, av, tl, nameOf, db, gref, addAudit, val, toast, money, sgn, fmtNum, dt, dShort, tsMs, bar, spinner, icon, isAdmin, gcol, openModal, closeModal, balanceOf, feat } from './core.js';
+import { S, F, ACTIONS, CHANGES, POS, tierCount, t, esc, av, tl, nameOf, db, gref, addAudit, val, toast, money, sgn, fmtNum, dt, dShort, tsMs, bar, spinner, icon, isAdmin, gcol, openModal, closeModal, balanceOf, feat, fltBar } from './core.js';
 import { memberAdmin } from './admin.js';
 
 // ---------- loading & computing ----------
@@ -127,7 +127,7 @@ export function matchModal(id) {
     </div>
     <div class="grid2">${team(m.teamA || {})}${team(m.teamB || {})}</div>
     ${m.shootout?.kicks?.length ? shootoutBlock(m) : ''}
-    ${(m.events || []).length ? `<h3 style="margin:14px 0 4px">${t('events')}</h3>` + [...m.events].sort((a, b) => (a.t || 0) - (b.t || 0)).map(e => eventLine(m, e)).join('') : ''}
+    ${(m.events || []).length ? `<h3 style="margin:14px 0 4px">${t('events')}</h3>` + evFilter(m.events) + evList(m.events).sort((a, b) => (a.t || 0) - (b.t || 0)).map(e => eventLine(m, e)).join('') : ''}
     ${!(m.events || []).length && (m.goals || []).length ? `<h3 style="margin:14px 0 4px">${t('goals')}</h3>` + m.goals.map(g => `
       <div class="li"><div><b>${nm(g.uid)}</b>${g.og ? ` <span class="tag warn">${t('own_goal')}</span>` : ''}${g.penalty ? ` <span class="tag gold">${t('penalty')}</span>` : ''}
       ${g.assist ? `<div class="mute small">${t('assist_by')}: ${nm(g.assist)}</div>` : ''}</div><span class="tag">${t('team')} ${tl(g.team === 'A' ? m.teamA : m.teamB)}</span></div>`).join('') : ''}
@@ -143,6 +143,11 @@ export function shootoutBlock(m) {
   const nm = x => esc(S.members[x]?.name || S.guests[x]?.name || m.names?.[x] || '-');
   const col = k => `<div class="tile" style="min-width:0;padding:8px"><b>${t('team')} ${tl(k === 'A' ? m.teamA : m.teamB)}</b>${m.shootout.kicks.filter(x => x.team === k).map((x, i) => `<div style="padding:6px 0;border-bottom:1px solid var(--line)"><div style="display:flex;gap:6px;align-items:center"><span class="rk">${i + 1}</span><b class="small" style="min-width:0;overflow-wrap:anywhere">${nm(x.uid)}</b></div><div style="margin-top:3px"><span class="tag ${x.res === 'goal' ? '' : 'warn'}">${t('so_' + x.res)}</span>${x.res === 'saved' && x.gk ? `<div class="mute small">${t('so_saved_by')}: ${nm(x.gk)}</div>` : ''}</div></div>`).join('')}</div>`;
   return `<h3 style="margin:14px 0 4px">${t('shootout')}</h3><div class="grid2" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">${col('A')}${col('B')}</div>`;
+}
+export const evList = evs => (S.flt.ev.v ? evs.filter(e => e.type === S.flt.ev.v) : [...evs]);
+export function evFilter(evs) {
+  const kinds = ['goal', 'yellow', 'red', 'save', 'sub'].filter(k => evs.some(e => e.type === k));
+  return fltBar('ev', [['', t('flt_all')], ...kinds.map(k => [k, t('flt_events_' + k)])], false, evList(evs).length);
 }
 export function eventLine(m, e, del = false) {
   const nm = id => esc(S.members[id]?.name || S.guests[id]?.name || m.names?.[id] || '-');

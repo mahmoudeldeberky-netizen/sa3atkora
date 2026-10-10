@@ -1,6 +1,6 @@
 import { S, F, db, ACTIONS, CHANGES, INPUTS, t, esc, av, val, num, checked, money, fmtNum, dt, tsMs, toLocalInput, toast, openModal, closeModal, drawModal, confirmBox,
-  numIn, dtIn, icon, bar, spinner, isAdmin, gref, gcol, addAudit, addLedger, bumpFund, balanceOf, slotCount, playersOf, attMapFor, myName, photoOf, feat, download, tl, tlab, nameOf, tierCount } from './core.js';
-import { matchModal, eventLine, shootoutBlock } from './stats.js';
+  numIn, dtIn, icon, bar, spinner, isAdmin, isOwner, gref, gcol, addAudit, addLedger, bumpFund, balanceOf, slotCount, playersOf, attMapFor, myName, photoOf, feat, download, tl, tlab, nameOf, tierCount } from './core.js';
+import { matchModal, eventLine, shootoutBlock, evFilter, evList } from './stats.js';
 
 const sessOf = id => S.sessions.find(x => x.id === (id || S.sid));
 const startMs = s => tsMs(s.startsAt);
@@ -118,6 +118,7 @@ export function sessionView() {
       <button class="btn" data-act="sessionForm" data-id="${esc(s.id)}">${t('edit')}</button>
       <button class="btn primary" data-act="finalize">${t('finalize')}</button>
       <button class="btn danger" data-act="cancelSession">${t('cancel_session')}</button>` : ''}
+      ${s.status === 'cancelled' && isOwner() ? `<button class="btn danger" data-act="delSession">${t('delete_session')}</button>` : ''}
       ${s.status === 'done' && s.summary ? `<div class="mute small">${t('summary_line', { n: s.summary.charged, fee: fmtNum(s.summary.fee), cost: fmtNum(s.summary.cost), guests: fmtNum(s.summary.guests) })}</div>` : ''}
     </div></div>`;
   }
@@ -230,6 +231,19 @@ ACTIONS.saveSession = async el => {
   else b.set(F.doc(gcol('sessions')), { ...data, durationMin: 60, status: 'open', createdAt: F.serverTimestamp(), createdBy: S.user.uid });
   addAudit(b, id ? 'session_edit' : 'session_new', dt(d.getTime(), { weekday: 'long', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }));
   await b.commit(); closeModal(); toast(t('saved'));
+};
+// حذف ماتش ملغي نهائيا (المالك فقط): الحضور والمباريات المرتبطة به
+ACTIONS.delSession = () => {
+  const s = sessOf(); if (!s || s.status !== 'cancelled' || !isOwner()) return;
+  confirmBox(t('delete_session_q'), async () => {
+    const sid = S.sid, label = dt(startMs(s), { day: 'numeric', month: 'short', year: 'numeric' });
+    const [att, ms] = await Promise.all([F.getDocs(gcol('sessions', sid, 'attendance')), F.getDocs(F.query(gcol('matches'), F.where('sid', '==', sid)))]);
+    const b = F.writeBatch(db);
+    att.docs.forEach(d => b.delete(d.ref)); ms.docs.forEach(d => b.delete(d.ref));
+    b.delete(gref('sessions', sid));
+    addAudit(b, 'session_delete', label);
+    await b.commit(); toast(t('saved')); history.back();
+  }, true);
 };
 ACTIONS.cancelSession = () => confirmBox(t('cancel_session_q'), async () => {
   const b = F.writeBatch(db);
@@ -621,7 +635,8 @@ export function refereeView() {
   const sus = live ? suspensions(m) : [];
   if (sus.length) h += `<div class="card"><b>${t('suspended')}</b>${sus.map(x => `<div class="li"><span class="cd cr"></span><div><b>${pl(x.e.uid)}</b></div><span class="tag">${t('team')} ${tl(x.e.team === 'A' ? m.teamA : m.teamB)}</span><b dir="ltr" data-sus="${esc(x.e.id)}">${mmss(x.left * 1000)}</b></div>`).join('')}</div>`;
   if (m.scoreA === m.scoreB && (m.pens || (adm && live))) h += shootoutPanel(m, adm && live);
-  h += `<h3>${t('events')}</h3><div class="card">${events.length ? events.map(e => eventLine(m, e, adm && live)).join('') : `<div class="empty">${t('no_events')}</div>`}</div>`;
+  const shown = evList(events);
+  h += `<h3>${t('events')}</h3>${events.length ? `<div style="padding:0 16px">${evFilter(events)}</div>` : ''}<div class="card">${shown.length ? shown.map(e => eventLine(m, e, adm && live)).join('') : `<div class="empty">${t('no_events')}</div>`}</div>`;
   if (adm && live) h += `<div class="row" style="margin:12px 16px"><button class="btn primary" data-act="refEnd">${t('end_match')}</button><button class="btn danger" data-act="refAbort">${t('abort_match')}</button></div>`;
   if (!adm && live) h += `<div class="mute small" style="text-align:center;padding:8px 16px">${t('ref_readonly_hint')}</div>`;
   return h;

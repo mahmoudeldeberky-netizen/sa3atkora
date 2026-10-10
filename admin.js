@@ -1,5 +1,5 @@
 import { S, F, db, ACTIONS, CHANGES, t, esc, av, val, num, checked, money, fmtNum, sgn, dt, tsMs, toast, openModal, closeModal, confirmBox, numIn,
-  isAdmin, isOwner, canGrant, gref, gcol, addAudit, addLedger, bumpFund, balanceOf, download, csvRow, spinner, genCode, feat } from './core.js';
+  isAdmin, isOwner, fltBar, fltPass, canGrant, gref, gcol, addAudit, addLedger, bumpFund, balanceOf, download, csvRow, spinner, genCode, feat } from './core.js';
 
 const dowOpts = sel => [0, 1, 2, 3, 4, 5, 6].map(d => `<option value="${d}" ${+sel === d ? 'selected' : ''}>${t('dow' + d)}</option>`).join('');
 const activeMembers = () => Object.values(S.members).filter(m => m.status === 'active').sort((a, b) => a.name.localeCompare(b.name));
@@ -148,11 +148,16 @@ function accountsView() {
   const bals = Object.values(S.balances);
   const credit = bals.filter(b => b.balance > 0).reduce((s, b) => s + b.balance, 0);
   const debt = bals.filter(b => b.balance < 0).reduce((s, b) => s + b.balance, 0);
-  const led = [...S.ledger].sort((a, b) => tsMs(b.at) - tsMs(a.at));
+  const fl = S.flt.led;
+  const led = [...S.ledger].sort((a, b) => tsMs(b.at) - tsMs(a.at)).filter(l => (!fl.v || l.type === fl.v) && fltPass('led', tsMs(l.at)));
+  const sumA = led.reduce((x, l) => x + (l.amount || 0), 0), sumF = led.reduce((x, l) => x + (l.fund || 0), 0);
+  const types = ['payment', 'expense', 'adjust', 'charge', 'guest', 'reversal'];
   return `<div class="tiles"><div class="tile"><span class="mute small">${t('total_credit')}</span><b class="pos" dir="ltr">${fmtNum(credit)}</b></div>
     <div class="tile"><span class="mute small">${t('total_debt')}</span><b class="neg" dir="ltr">${fmtNum(debt)}</b></div></div>
     <div class="row" style="margin:12px 16px"><button class="btn primary" data-act="payModal">${t('new_entry')}</button></div>
-    <h3>${t('ledger')}</h3><div class="card">${led.length ? led.map(l => {
+    <h3>${t('ledger')}</h3><div style="padding:0 16px">${fltBar('led', [['', t('flt_all')], ...types.map(k => [k, t('lt_' + k)])], true, led.length)}
+    ${(fl.v || fl.from || fl.to) && led.length ? `<div class="mute small" dir="ltr" style="margin-top:6px">${t('flt_totals')}: ${sgn(sumA)} · ${t('fund')}: ${sgn(sumF)}</div>` : ''}</div>
+    <div class="card">${led.length ? led.map(l => {
       const who = l.uid ? (S.members[l.uid]?.name || '—') : (l.name || '');
       return `<div class="li"><div><b>${t('lt_' + l.type)}</b> ${l.reversed ? `<span class="tag warn">${t('reversed')}</span>` : ''}
         <div class="mute small">${esc(who)} · ${dt(tsMs(l.at), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}${l.note ? ' · ' + esc(l.note) : ''}</div>
@@ -281,7 +286,11 @@ export async function loadAudit() {
 }
 function auditView() {
   if (!S.audit) return spinner();
-  return `<div class="card">${S.audit.length ? S.audit.map(a => `<div class="li"><div><b>${t('au_' + a.action)}</b>
+  const fa = S.flt.aud, acts = [...new Set(S.audit.map(a => a.action))];
+  const list = S.audit.filter(a => (!fa.v || a.action === fa.v) && fltPass('aud', tsMs(a.at)));
+  const bar = `<div style="padding:12px 16px 0"><select data-chg="fltSel" data-k="aud"><option value="">${t('flt_all')}</option>${acts.map(k => `<option value="${esc(k)}" ${fa.v === k ? 'selected' : ''}>${esc(t('au_' + k))}</option>`).join('')}</select>
+    ${fltBar('aud', [], true, list.length)}</div>`;
+  return bar + `<div class="card">${list.length ? list.map(a => `<div class="li"><div><b>${t('au_' + a.action)}</b>
     <div class="mute small">${esc(a.details || '')}</div>
     <div class="mute small">${esc(a.byName || '')} · ${dt(tsMs(a.at), { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div></div></div>`).join('') : `<div class="empty">${t('no_history')}</div>`}</div>`;
 }

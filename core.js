@@ -16,6 +16,7 @@ export const S = {
   tab: 'matches', gtab: 'members', rtab: 'goals', subs: [], rsubs: [], osubs: {}, oatt: {},
   sid: null, ssubs: [], att: {}, smatches: [], guests: {}, pos: {}, tiers: {}, stats: null, statsLoading: false,
   audit: null, report: null, modalFn: null, tmpPhoto: undefined,
+  flt: { led: { v: '', from: '', to: '' }, aud: { v: '', from: '', to: '' }, ev: { v: '' } },
   render() {}, go() {}
 };
 export const ACTIONS = {};
@@ -85,6 +86,31 @@ export function download(name, text, mime = 'text/csv;charset=utf-8') {
   setTimeout(() => URL.revokeObjectURL(a.href), 3000);
 }
 export const csvRow = r => r.map(x => `"${String(x ?? '').replace(/"/g, '""')}"`).join(',');
+
+
+// ---------- filters (ledger / activity log / match events) ----------
+export const dayMs = (d, end) => (d ? new Date(d + (end ? 'T23:59:59.999' : 'T00:00:00')).getTime() : 0);
+export function fltPass(key, ms) {
+  const f = S.flt[key]; if (!f) return true;
+  if (f.from && ms < dayMs(f.from)) return false;
+  if (f.to && ms > dayMs(f.to, true)) return false;
+  return true;
+}
+const fltRedraw = () => { S.render(); if (S.modalFn) drawModal(); };
+// chips: [[value,label],...]  (value '' = all). dates=true adds from/to date pickers
+export function fltBar(key, chips, dates = true, count = null) {
+  const f = S.flt[key];
+  const on = !!(f.v || f.from || f.to);
+  return `<div class="flt"><div class="seg" style="padding:12px 0 0">${chips.map(([v, l]) => `<button class="${f.v === v ? 'on' : ''}" data-act="fltSet" data-k="${key}" data-v="${esc(v)}">${esc(l)}</button>`).join('')}</div>
+    ${dates ? `<div class="grid2" style="margin-top:8px"><div><label>${t('flt_from')}</label><input type="date" value="${esc(f.from)}" data-chg="fltDate" data-k="${key}" data-f="from"></div>
+    <div><label>${t('flt_to')}</label><input type="date" value="${esc(f.to)}" data-chg="fltDate" data-k="${key}" data-f="to"></div></div>` : ''}
+    <div class="row" style="margin-top:8px;align-items:center"><span class="mute small">${count === null ? '' : t('flt_count', { n: count })}</span>
+    ${on ? `<button class="btn sm" data-act="fltClear" data-k="${key}">${t('flt_clear')}</button>` : ''}</div></div>`;
+}
+ACTIONS.fltSet = el => { S.flt[el.dataset.k].v = el.dataset.v; fltRedraw(); };
+ACTIONS.fltClear = el => { Object.assign(S.flt[el.dataset.k], { v: '', from: '', to: '' }); fltRedraw(); };
+CHANGES.fltDate = el => { S.flt[el.dataset.k][el.dataset.f] = el.value; fltRedraw(); };
+CHANGES.fltSel = el => { S.flt[el.dataset.k].v = el.value; fltRedraw(); };
 
 // ---------- modal ----------
 export function drawModal() {
@@ -174,7 +200,7 @@ export const icon = (n, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 24 24"
 export function bar(title, back = false, extra = '') {
   return `<div class="bar">${back ? `<button data-act="back" aria-label="back">${icon('back', 'flip')}</button>` : ''}<h1>${esc(title)}</h1>${extra}</div>`;
 }
-export const VERSION = globalThis.APP_VERSION || '1.3.0';
+export const VERSION = globalThis.APP_VERSION || '1.4.0';
 export const versionLine = () => `<div class="mute small" style="text-align:center;padding:18px 16px 8px"><span dir="auto">${t('version')}</span> <span dir="ltr">${VERSION}</span></div>`;
 export const spinner = () => '<div class="empty"><div class="spin"></div></div>';
 export function pubOf(p) {
