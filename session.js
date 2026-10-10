@@ -138,6 +138,7 @@ ACTIONS.attMenu = el => {
       ${a.rsvp !== 'yes' ? b('yes', t('mark_in'), 'primary') : b('no', t('mark_out'))}
       ${!a.guest && a.rsvp === 'yes' ? (a.excused ? b('unexcuse', t('unexcuse')) : b('excuse', t('excuse'))) : ''}
       ${a.sub?.status === 'pending' ? b('subok', t('sub_approve'), 'primary') + b('subno', t('sub_reject')) : ''}
+      ${a.rsvp === 'yes' && (sessOf()?.status === 'open' || (sessOf()?.status === 'done' && isOwner())) ? `<button class="btn" data-act="attSwapModal" data-id="${esc(id)}">${t('att_swap')}</button>` : ''}
       ${b('del', t('remove_record'), 'danger')}<button class="btn" data-act="closeModal">${t('close')}</button></div>`;
   });
 };
@@ -514,7 +515,7 @@ ACTIONS.meDelete = () => !canEditMatch({ sid: E.sid }) ? toast(t('owner_only_edi
 
 // =============== استبدال لاعب في ماتش منتهي (للمالك فقط) ===============
 const swapMatches = m => {
-  const all = new Map(); [...S.smatches, ...(S.stats?.matches || [])].forEach(x => { if (x.sid === m.sid) all.set(x.id, x); });
+  const all = new Map(); [...(S.stats?.matches || []), ...S.smatches].forEach(x => { if (x.sid === m.sid) all.set(x.id, x); });
   return [...all.values()].filter(x => x.status !== 'live');
 };
 function swapIn(m, a, b, nameB) {
@@ -552,6 +553,40 @@ ACTIONS.swapDo = async el => {
   list.forEach(x => bt.update(gref('matches', x.id), { ...swapIn(x, a, b, nameB), updatedAt: F.serverTimestamp() }));
   addAudit(bt, 'match_swap', `${m.names?.[a] || nameOf(a)} > ${nameB} (${list.length})`);
   await bt.commit(); S.stats = null; closeModal(); toast(t('saved'));
+};
+
+
+// استبدال لاعب في قائمة الحضور بلاعب آخر (عضو أو ضيف مسجل حتى لو ما حضرش): ينزل مكانه في الحضور والفرق والمباريات
+ACTIONS.attSwapModal = el => {
+  const id = el.dataset.id, a = S.att[id], s = sessOf(); if (!a || !s) return;
+  if (s.status === 'done' && !isOwner()) { toast(t('owner_only_edit')); return; }
+  const cands = [...Object.values(S.members).filter(x => x.status === 'active').map(x => ({ id: x.uid, name: x.name })),
+    ...Object.entries(S.guests).map(([gid, g]) => ({ id: gid, name: g.name + ' (' + t('guest') + ')' }))]
+    .filter(x => x.id !== id && S.att[x.id]?.rsvp !== 'yes').sort((p, q) => p.name.localeCompare(q.name));
+  openModal(() => `<h2>${t('att_swap')}: ${esc(a.name)}</h2><div class="mute small">${t('att_swap_hint')}</div>
+    <label>${t('att_swap_to')}</label><select id="as_to">${cands.map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select>
+    <label>${t('att_swap_paid')} (${esc(S.g.currency || '')})</label>${numIn('as_paid', a.guest ? (a.paid || 0) : s.fee)}
+    <div class="chk" style="margin-top:12px"><input type="checkbox" id="as_m" checked><label for="as_m">${t('att_swap_matches')}</label></div>
+    <div class="row"><button class="btn primary" data-act="attSwapDo" data-id="${esc(id)}">${t('confirm')}</button><button class="btn" data-act="closeModal">${t('cancel')}</button></div>`);
+};
+ACTIONS.attSwapDo = async el => {
+  const old = el.dataset.id, a = S.att[old], s = sessOf(), nu = val('as_to'); if (!a || !s || !nu || nu === old) return;
+  if (s.status === 'done' && !isOwner()) return;
+  const isMember = !!S.members[nu], nm = S.members[nu]?.name || S.guests[nu]?.name || nameOf(nu);
+  if (!isMember && a.sub) { toast(t('att_swap_sub')); return; }
+  const now = F.serverTimestamp(), b = F.writeBatch(db);
+  const doc = { uid: nu, name: nm, rsvp: 'yes', updatedAt: a.updatedAt || now };
+  if (!isMember) { doc.guest = true; doc.paid = Math.max(0, num(val('as_paid'))); }
+  if (a.subFor) doc.subFor = a.subFor;
+  if (isMember && a.sub) doc.sub = a.sub;
+  b.set(attRef(S.sid, nu), doc); b.delete(attRef(S.sid, old));
+  Object.values(S.att).filter(x => x.subFor === old).forEach(x => b.update(attRef(S.sid, x.uid), { subFor: nu }));
+  if (s.teams?.some(tm => (tm.players || []).includes(old))) b.update(gref('sessions', S.sid), { teams: s.teams.map(tm => ({ ...tm, players: (tm.players || []).map(x => (x === old ? nu : x)) })) });
+  let n = 0;
+  if (checked('as_m')) swapMatches({ sid: S.sid }).filter(m => m.status !== 'live' && (m.players || []).includes(old) && !(m.players || []).includes(nu))
+    .forEach(m => { n++; b.update(gref('matches', m.id), { ...swapIn(m, old, nu, nm), updatedAt: now }); });
+  addAudit(b, 'att_swap', `${a.name} > ${nm} (${n})`);
+  await b.commit(); S.stats = null; closeModal(); toast(t('saved'));
 };
 
 // =============== referee mode (stopwatch + live events) ===============
