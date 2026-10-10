@@ -128,13 +128,19 @@ service cloud.firestore {
       // ---------- المباريات (نتائج وأهداف) ----------
       match /matches/{mid} {
         allow read: if isActive(gid);
-        allow write: if isAdmin(gid);
+        allow create: if isAdmin(gid);
+        // بعد اعتماد الماتش: التعديل والحذف للمالك فقط (المباراة الجارية بالحكم مستثناة)
+        allow update, delete: if isAdmin(gid)
+          && (isOwner(gid) || resource.data.get('status', '') == 'live' || sessionData(gid, resource.data.sid).status == 'open');
       }
 
       // ---------- الحصص (المواعيد) والحضور ----------
       match /sessions/{sid} {
         allow read: if isActive(gid);
-        allow create, update: if isAdmin(gid);
+        allow create: if isAdmin(gid);
+        // الماتش المعتمد: تعديله للمالك فقط
+        allow update: if isAdmin(gid) && (resource.data.status != 'done' || isOwner(gid)
+          || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['teams']));
         allow delete: if isOwner(gid);
 
         match /attendance/{uid} {

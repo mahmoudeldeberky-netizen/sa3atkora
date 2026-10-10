@@ -1,5 +1,5 @@
 import { S, F, db, ACTIONS, CHANGES, INPUTS, t, esc, av, val, num, checked, money, fmtNum, dt, tsMs, toLocalInput, toast, openModal, closeModal, drawModal, confirmBox,
-  numIn, dtIn, icon, bar, spinner, isAdmin, isOwner, gref, gcol, addAudit, addLedger, bumpFund, balanceOf, slotCount, playersOf, attMapFor, myName, photoOf, feat, download, tl, tlab, nameOf, tierCount } from './core.js';
+  numIn, dtIn, icon, bar, spinner, isAdmin, isOwner, canEditMatch, gref, gcol, addAudit, addLedger, bumpFund, balanceOf, slotCount, playersOf, attMapFor, myName, photoOf, feat, download, tl, tlab, nameOf, tierCount } from './core.js';
 import { matchModal, eventLine, shootoutBlock, evFilter, evList } from './stats.js';
 
 const sessOf = id => S.sessions.find(x => x.id === (id || S.sid));
@@ -118,6 +118,7 @@ export function sessionView() {
       <button class="btn" data-act="sessionForm" data-id="${esc(s.id)}">${t('edit')}</button>
       <button class="btn primary" data-act="finalize">${t('finalize')}</button>
       <button class="btn danger" data-act="cancelSession">${t('cancel_session')}</button>` : ''}
+      ${s.status === 'done' && isOwner() ? `<button class="btn" data-act="sessionForm" data-id="${esc(s.id)}">${t('edit')}</button>` : ''}
       ${s.status === 'cancelled' && isOwner() ? `<button class="btn danger" data-act="delSession">${t('delete_session')}</button>` : ''}
       ${s.status === 'done' && s.summary ? `<div class="mute small">${t('summary_line', { n: s.summary.charged, fee: fmtNum(s.summary.fee), cost: fmtNum(s.summary.cost), guests: fmtNum(s.summary.guests) })}</div>` : ''}
     </div></div>`;
@@ -208,6 +209,7 @@ function nextSlot() {
 }
 ACTIONS.sessionForm = el => {
   const s = el?.dataset?.id ? sessOf(el.dataset.id) : null, g = S.g;
+  if (s && s.status === 'done' && !isOwner()) { toast(t('owner_only_edit')); return; }
   openModal(() => `<h2>${s ? t('edit_session') : t('new_session')}</h2>
     <label>${t('date_time')}</label>${dtIn('sf_dt', toLocalInput(s ? new Date(startMs(s)) : nextSlot()))}
     <div class="grid2"><div><label>${t('fee_per_player')}</label>${numIn('sf_fee', s?.fee ?? g.defaultFee ?? 10)}</div>
@@ -216,6 +218,7 @@ ACTIONS.sessionForm = el => {
     <div><label>${t('cancel_hours')}</label>${numIn('sf_cancel', s?.cancelHours ?? g.cancelHours ?? 12)}</div></div>
     <label>${t('location')}</label><input id="sf_loc" maxlength="80" value="${esc(s?.location || '')}">
     <label>${t('note')}</label><input id="sf_note" maxlength="160" value="${esc(s?.note || '')}">
+    ${s?.status === 'done' ? `<div class="mute small" style="margin-top:8px">${t('edit_done_hint')}</div>` : ''}
     <div class="row"><button class="btn primary" data-act="saveSession" data-id="${esc(s?.id || '')}">${t('save')}</button><button class="btn" data-act="closeModal">${t('cancel')}</button></div>`);
 };
 ACTIONS.saveSession = async el => {
@@ -404,13 +407,14 @@ function fillFromTeams() {
 ACTIONS.newMatch = () => {
   const s = sessOf(), pl = playersOf(S.att);
   if (pl.length < 2) { toast(t('need_players')); return; }
-  E = { id: null, no: S.smatches.reduce((m, x) => Math.max(m, x.no || 0), 0) + 1, a: 'A', b: 'B', at: '', bt: '', ia: 0, ib: 1, assign: {}, scoreA: 0, scoreB: 0, goals: [], saves: {}, pens: null, roles: {},
+  E = { id: null, sid: S.sid, no: S.smatches.reduce((m, x) => Math.max(m, x.no || 0), 0) + 1, a: 'A', b: 'B', at: '', bt: '', ia: 0, ib: 1, assign: {}, scoreA: 0, scoreB: 0, goals: [], saves: {}, pens: null, roles: {},
     pool: pl.map(p => ({ id: p.uid, name: p.name })) };
   if (s.teams?.length >= 2) fillFromTeams();
   openModal(editorHtml);
 };
 ACTIONS.editMatch = el => {
   const m = S.smatches.find(x => x.id === el.dataset.id) || S.stats?.matches.find(x => x.id === el.dataset.id); if (!m || m.status === 'live') return;
+  if (!canEditMatch(m)) { toast(t('owner_only_edit')); return; }
   const assign = {}; (m.teamA?.all || m.teamA?.players || []).forEach(id => { assign[id] = 'A'; }); (m.teamB?.all || m.teamB?.players || []).forEach(id => { assign[id] = 'B'; });
   (m.teamA?.players || []).forEach(id => { assign[id] = 'A'; }); (m.teamB?.players || []).forEach(id => { assign[id] = 'B'; });
   const ids = new Set(m.players || []);
@@ -481,6 +485,7 @@ ACTIONS.meDelGoal = el => {
 ACTIONS.meAddSave = () => { const id = val('mg_gk'); if (!id) return; E.saves[id] = (E.saves[id] || 0) + 1; redraw(); };
 ACTIONS.meDelSave = el => { delete E.saves[el.dataset.id]; redraw(); };
 ACTIONS.meSave = async () => {
+  if (E.id && !canEditMatch({ sid: E.sid })) { toast(t('owner_only_edit')); return; }
   const as = assigned();
   if (!as.length) { toast(t('need_lineups')); return; }
   const ids = as.map(p => p.id), names = {}; as.forEach(p => { names[p.id] = p.name; });
@@ -499,12 +504,55 @@ ACTIONS.meSave = async () => {
   addAudit(b, E.id ? 'match_edit' : 'match_new', `#${E.no} ${E.a} ${E.scoreA}-${E.scoreB} ${E.b}`);
   await b.commit(); S.stats = null; closeModal(); toast(t('saved'));
 };
-ACTIONS.meDelete = () => confirmBox(t('delete_match_q'), async () => {
+ACTIONS.meDelete = () => !canEditMatch({ sid: E.sid }) ? toast(t('owner_only_edit')) : confirmBox(t('delete_match_q'), async () => {
   const b = F.writeBatch(db);
   b.delete(gref('matches', E.id));
   addAudit(b, 'match_delete', `#${E.no}`);
   await b.commit(); S.stats = null; toast(t('saved'));
 }, true);
+
+
+// =============== استبدال لاعب في ماتش منتهي (للمالك فقط) ===============
+const swapMatches = m => {
+  const all = new Map(); [...S.smatches, ...(S.stats?.matches || [])].forEach(x => { if (x.sid === m.sid) all.set(x.id, x); });
+  return [...all.values()].filter(x => x.status !== 'live');
+};
+function swapIn(m, a, b, nameB) {
+  const r = id => (id === a ? b : id), mp = x => (Array.isArray(x) ? x.map(r) : x);
+  const d = { players: mp(m.players) };
+  ['teamA', 'teamB'].forEach(k => { if (m[k]) d[k] = { ...m[k], players: mp(m[k].players), ...(m[k].all ? { all: mp(m[k].all) } : {}) }; });
+  d.goals = (m.goals || []).map(g => ({ ...g, uid: r(g.uid), ...(g.assist ? { assist: r(g.assist) } : {}) }));
+  d.saves = {}; Object.entries(m.saves || {}).forEach(([id, n]) => { d.saves[r(id)] = (d.saves[r(id)] || 0) + n; });
+  d.roles = {}; Object.entries(m.roles || {}).forEach(([id, v]) => { d.roles[r(id)] = v; });
+  d.names = { ...(m.names || {}) }; delete d.names[a]; d.names[b] = nameB;
+  if (m.events) d.events = m.events.map(e => { const x = { ...e }; ['uid', 'assist', 'in', 'out', 'from'].forEach(f => { if (x[f]) x[f] = r(x[f]); }); return x; });
+  if (m.shootout) d.shootout = { ...m.shootout, kicks: (m.shootout.kicks || []).map(k => ({ ...k, ...(k.uid ? { uid: r(k.uid) } : {}), ...(k.gk ? { gk: r(k.gk) } : {}) })) };
+  return JSON.parse(JSON.stringify(d));
+}
+ACTIONS.swapPlayer = el => {
+  if (!isOwner()) { toast(t('owner_only_edit')); return; }
+  const m = S.smatches.find(x => x.id === el.dataset.id) || S.stats?.matches.find(x => x.id === el.dataset.id); if (!m || m.status === 'live') return;
+  const inM = new Set(m.players || []);
+  const cands = [...Object.values(S.members).filter(x => x.status === 'active').map(x => ({ id: x.uid, name: x.name })), ...Object.entries(S.guests).map(([id, g]) => ({ id, name: g.name + ' (' + t('guest') + ')' }))]
+    .filter(x => !inM.has(x.id)).sort((a, b) => a.name.localeCompare(b.name));
+  openModal(() => `<h2>${t('swap_btn')}</h2><div class="mute small">${t('swap_hint')}</div>
+    <label>${t('swap_from')}</label><select id="sw_from">${(m.players || []).map(id => `<option value="${esc(id)}">${esc(m.names?.[id] || nameOf(id))}</option>`).join('')}</select>
+    <label>${t('swap_to')}</label><select id="sw_to">${cands.map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select>
+    <div class="chk" style="margin-top:12px"><input type="checkbox" id="sw_all" checked><label for="sw_all">${t('swap_all')}</label></div>
+    <div class="row"><button class="btn primary" data-act="swapDo" data-id="${esc(m.id)}">${t('confirm')}</button><button class="btn" data-act="closeModal">${t('cancel')}</button></div>`);
+};
+ACTIONS.swapDo = async el => {
+  if (!isOwner()) return;
+  const m = S.smatches.find(x => x.id === el.dataset.id) || S.stats?.matches.find(x => x.id === el.dataset.id); if (!m) return;
+  const a = val('sw_from'), b = val('sw_to'); if (!a || !b || a === b) return;
+  if ((m.players || []).includes(b)) { toast(t('swap_exists')); return; }
+  const nameB = S.members[b]?.name || S.guests[b]?.name || nameOf(b);
+  const list = checked('sw_all') ? swapMatches(m).filter(x => (x.players || []).includes(a) && !(x.players || []).includes(b)) : [m];
+  const bt = F.writeBatch(db);
+  list.forEach(x => bt.update(gref('matches', x.id), { ...swapIn(x, a, b, nameB), updatedAt: F.serverTimestamp() }));
+  addAudit(bt, 'match_swap', `${m.names?.[a] || nameOf(a)} > ${nameB} (${list.length})`);
+  await bt.commit(); S.stats = null; closeModal(); toast(t('saved'));
+};
 
 // =============== referee mode (stopwatch + live events) ===============
 let refTimer = null, audioCtx = null, wake = null, firedKey = '', susKey = '', R = null;

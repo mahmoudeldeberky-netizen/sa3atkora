@@ -97,20 +97,37 @@ export function fltPass(key, ms) {
   return true;
 }
 const fltRedraw = () => { S.render(); if (S.modalFn) drawModal(); };
-// chips: [[value,label],...]  (value '' = all). dates=true adds from/to date pickers
+// date picker built from 3 selects (day / month / year) so labels are always readable and digits Latin.
+// year only = whole year; year+month = whole month; empty parts of "to" fall to the end of the period.
+function dateSel(key, w) {
+  const f = S.flt[key], P = f[w + 'P'] || ['', '', ''], y0 = new Date().getFullYear();
+  const opt = (v, cur, l) => `<option value="${v}" ${String(cur) === String(v) ? 'selected' : ''}>${l ?? v}</option>`;
+  const sel = (i, ph, list) => `<select data-chg="fltPart" data-k="${key}" data-w="${w}" data-p="${i}" dir="ltr" style="padding-inline:6px">${opt('', P[i], ph)}${list.map(v => opt(v, P[i])).join('')}</select>`;
+  const days = Array.from({ length: 31 }, (_, i) => i + 1), months = Array.from({ length: 12 }, (_, i) => i + 1), years = [y0 + 1, y0, y0 - 1, y0 - 2, y0 - 3];
+  return `<div><label>${t(w === 'from' ? 'flt_from' : 'flt_to')}</label><div style="display:grid;grid-template-columns:1fr 1fr 1.3fr;gap:6px">${sel(0, t('flt_day'), days)}${sel(1, t('flt_month'), months)}${sel(2, t('flt_year'), years)}</div></div>`;
+}
+function partsToDate(P, end) {
+  const [d, m, y] = P; if (!y) return '';
+  const mm = m || (end ? 12 : 1), last = new Date(+y, +mm, 0).getDate(), dd = Math.min(+(d || (end ? last : 1)), last);
+  return `${y}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+}
+// chips: [[value,label],...]  (value '' = all). dates=true adds from/to pickers
 export function fltBar(key, chips, dates = true, count = null) {
   const f = S.flt[key];
   const on = !!(f.v || f.from || f.to);
-  return `<div class="flt"><div class="seg" style="padding:12px 0 0">${chips.map(([v, l]) => `<button class="${f.v === v ? 'on' : ''}" data-act="fltSet" data-k="${key}" data-v="${esc(v)}">${esc(l)}</button>`).join('')}</div>
-    ${dates ? `<div class="grid2" style="margin-top:8px"><div><label>${t('flt_from')}</label><input type="date" value="${esc(f.from)}" data-chg="fltDate" data-k="${key}" data-f="from"></div>
-    <div><label>${t('flt_to')}</label><input type="date" value="${esc(f.to)}" data-chg="fltDate" data-k="${key}" data-f="to"></div></div>` : ''}
+  return `<div class="flt">${chips.length ? `<div class="seg" style="padding:12px 0 0">${chips.map(([v, l]) => `<button class="${f.v === v ? 'on' : ''}" data-act="fltSet" data-k="${key}" data-v="${esc(v)}">${esc(l)}</button>`).join('')}</div>` : ''}
+    ${dates ? `<div style="display:grid;gap:8px;margin-top:8px">${dateSel(key, 'from')}${dateSel(key, 'to')}</div>` : ''}
     <div class="row" style="margin-top:8px;align-items:center"><span class="mute small">${count === null ? '' : t('flt_count', { n: count })}</span>
     ${on ? `<button class="btn sm" data-act="fltClear" data-k="${key}">${t('flt_clear')}</button>` : ''}</div></div>`;
 }
 ACTIONS.fltSet = el => { S.flt[el.dataset.k].v = el.dataset.v; fltRedraw(); };
-ACTIONS.fltClear = el => { Object.assign(S.flt[el.dataset.k], { v: '', from: '', to: '' }); fltRedraw(); };
-CHANGES.fltDate = el => { S.flt[el.dataset.k][el.dataset.f] = el.value; fltRedraw(); };
+ACTIONS.fltClear = el => { Object.assign(S.flt[el.dataset.k], { v: '', from: '', to: '', fromP: ['', '', ''], toP: ['', '', ''] }); fltRedraw(); };
+CHANGES.fltPart = el => {
+  const f = S.flt[el.dataset.k], w = el.dataset.w, P = f[w + 'P'] || ['', '', ''];
+  P[+el.dataset.p] = el.value; f[w + 'P'] = P; f[w] = partsToDate(P, w === 'to'); fltRedraw();
+};
 CHANGES.fltSel = el => { S.flt[el.dataset.k].v = el.value; fltRedraw(); };
+export const canEditMatch = m => isOwner() || (isAdmin() && S.sessions.find(x => x.id === m.sid)?.status === 'open');
 
 // ---------- modal ----------
 export function drawModal() {
@@ -200,7 +217,7 @@ export const icon = (n, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 24 24"
 export function bar(title, back = false, extra = '') {
   return `<div class="bar">${back ? `<button data-act="back" aria-label="back">${icon('back', 'flip')}</button>` : ''}<h1>${esc(title)}</h1>${extra}</div>`;
 }
-export const VERSION = globalThis.APP_VERSION || '1.4.0';
+export const VERSION = globalThis.APP_VERSION || '1.5.0';
 export const versionLine = () => `<div class="mute small" style="text-align:center;padding:18px 16px 8px"><span dir="auto">${t('version')}</span> <span dir="ltr">${VERSION}</span></div>`;
 export const spinner = () => '<div class="empty"><div class="spin"></div></div>';
 export function pubOf(p) {

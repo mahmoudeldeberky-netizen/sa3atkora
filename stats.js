@@ -1,4 +1,4 @@
-import { S, F, ACTIONS, CHANGES, POS, tierCount, t, esc, av, tl, nameOf, db, gref, addAudit, val, toast, money, sgn, fmtNum, dt, dShort, tsMs, bar, spinner, icon, isAdmin, gcol, openModal, closeModal, balanceOf, feat, fltBar } from './core.js';
+import { S, F, ACTIONS, CHANGES, POS, tierCount, t, esc, av, tl, nameOf, db, gref, addAudit, val, toast, money, sgn, fmtNum, dt, dShort, tsMs, bar, spinner, icon, isAdmin, isOwner, gcol, openModal, closeModal, balanceOf, feat, fltBar, canEditMatch } from './core.js';
 import { memberAdmin } from './admin.js';
 
 // ---------- loading & computing ----------
@@ -132,7 +132,7 @@ export function matchModal(id) {
       <div class="li"><div><b>${nm(g.uid)}</b>${g.og ? ` <span class="tag warn">${t('own_goal')}</span>` : ''}${g.penalty ? ` <span class="tag gold">${t('penalty')}</span>` : ''}
       ${g.assist ? `<div class="mute small">${t('assist_by')}: ${nm(g.assist)}</div>` : ''}</div><span class="tag">${t('team')} ${tl(g.team === 'A' ? m.teamA : m.teamB)}</span></div>`).join('') : ''}
     ${!(m.events || []).length && Object.keys(m.saves || {}).length ? `<h3 style="margin:14px 0 4px">${t('saves')}</h3>` + Object.entries(m.saves).map(([id, n]) => `<div class="li"><div>${nm(id)}</div><b>${n}</b></div>`).join('') : ''}
-    <div class="row">${isAdmin() ? `<button class="btn primary" data-act="editMatch" data-id="${esc(m.id)}">${t('edit')}</button>` : ''}<button class="btn" data-act="closeModal">${t('close')}</button></div>`);
+    <div class="row">${isAdmin() && canEditMatch(m) ? `<button class="btn primary" data-act="editMatch" data-id="${esc(m.id)}">${t('edit')}</button>` : ''}${isOwner() && m.status !== 'live' ? `<button class="btn" data-act="swapPlayer" data-id="${esc(m.id)}">${t('swap_btn')}</button>` : ''}<button class="btn" data-act="closeModal">${t('close')}</button></div>`);
 }
 ACTIONS.openMatch = el => {
   const m = findMatch(el.dataset.id);
