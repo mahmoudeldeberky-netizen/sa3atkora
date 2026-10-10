@@ -92,6 +92,10 @@ ar: {
   ,sub_btn: 'تغيير لاعب', sub_out: 'خارج', pick_out: 'اختار اللاعب الخارج', pick_in: 'اختار اللاعب الداخل', bench: 'على الدكة (مسجلين في الحصة)', bench_empty: 'مفيش لاعبين على الدكة', from_other_team: 'من الفريق الآخر', back: 'رجوع',
   team_title_ph: 'اسم الفريق (اختياري) مثل: ملوك الملعب', known_guest: 'ضيف سابق', or_new_guest: 'أو اكتب اسم ضيف جديد',
   role_guest: 'ضيف', guests: 'الضيوف', rename_guest: 'تعديل اسم الضيف', au_guest_rename: 'تعديل اسم ضيف'
+  ,tier_count: 'عدد التصنيفات', split_mode: 'طريقة التقسيم', mode_tier: 'متدرّج حسب التصنيف (فرق متوازنة)', mode_rand: 'عشوائي كامل', tier_n: 'تصنيف {n}', tier_none: 'بدون تصنيف', tier_label: 'التصنيف', tier_hint: '1 = الأقوى. التصنيف ظاهر للأدمن بس.',
+  position: 'المركز', pos_none: 'غير محدد', pos_gk: 'حارس مرمى', pos_def: 'مدافع', pos_mid: 'وسط', pos_fwd: 'مهاجم', pos_hint: 'المركز اختياري ويظهر لكل اللاعبين.', roster_admin: 'المركز والتصنيف',
+  clean_sheets: 'شباك نظيفة', conceded: 'أهداف دخلت مرماه', rk_cs: 'شباك نظيفة',
+  ach_cs1: 'شباك نظيفة', ach_cs1_d: 'ماتش من غير ما تدخل عليك أهداف', ach_cs5: '5 شباك نظيفة', ach_cs5_d: 'حافظت على شباكك 5 مرات', ach_cs10: 'سور الفريق', ach_cs10_d: '10 شباك نظيفة', ach_top3cs: 'من أفضل 3 في الدفاع', ach_top3cs_d: 'ضمن أول 3 في الشباك النظيفة'
 },
 en: {
   app_name: 'Sa3et Kora', tagline: 'Organize your football hour with friends: attendance, balances, results and stats',
@@ -185,5 +189,9 @@ en: {
   ,sub_btn: 'Substitution', sub_out: 'Off', pick_out: 'Pick the player going off', pick_in: 'Pick the player coming on', bench: 'On the bench (signed up for this session)', bench_empty: 'No one on the bench', from_other_team: 'From the other team', back: 'Back',
   team_title_ph: 'Team name (optional), e.g. Pitch Kings', known_guest: 'Previous guest', or_new_guest: 'Or type a new guest name',
   role_guest: 'Guest', guests: 'Guests', rename_guest: 'Rename guest', au_guest_rename: 'Guest renamed'
+  ,tier_count: 'Number of tiers', split_mode: 'Split method', mode_tier: 'Tiered (balanced teams)', mode_rand: 'Fully random', tier_n: 'Tier {n}', tier_none: 'No tier', tier_label: 'Tier', tier_hint: '1 = strongest. Tiers are visible to admins only.',
+  position: 'Position', pos_none: 'Not set', pos_gk: 'Goalkeeper', pos_def: 'Defender', pos_mid: 'Midfielder', pos_fwd: 'Forward', pos_hint: 'Position is optional and visible to all players.', roster_admin: 'Position and tier',
+  clean_sheets: 'Clean sheets', conceded: 'Goals conceded', rk_cs: 'Clean sheets',
+  ach_cs1: 'Clean sheet', ach_cs1_d: 'A match without conceding', ach_cs5: '5 clean sheets', ach_cs5_d: 'Kept 5 clean sheets', ach_cs10: 'The wall', ach_cs10_d: '10 clean sheets', ach_top3cs: 'Top 3 defender', ach_top3cs_d: 'In the top 3 for clean sheets'
 }
 };

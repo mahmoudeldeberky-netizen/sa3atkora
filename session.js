@@ -1,5 +1,5 @@
 import { S, F, db, ACTIONS, CHANGES, INPUTS, t, esc, av, val, num, checked, money, fmtNum, dt, tsMs, toLocalInput, toast, openModal, closeModal, drawModal, confirmBox,
-  numIn, dtIn, icon, bar, spinner, isAdmin, gref, gcol, addAudit, addLedger, bumpFund, balanceOf, slotCount, playersOf, attMapFor, myName, photoOf, feat, download, tl, tlab, nameOf } from './core.js';
+  numIn, dtIn, icon, bar, spinner, isAdmin, gref, gcol, addAudit, addLedger, bumpFund, balanceOf, slotCount, playersOf, attMapFor, myName, photoOf, feat, download, tl, tlab, nameOf, tierCount } from './core.js';
 import { matchModal, eventLine } from './stats.js';
 
 const sessOf = id => S.sessions.find(x => x.id === (id || S.sid));
@@ -305,14 +305,34 @@ let T = null;
 const letters = 'ABCDEF';
 function shuffle(a) { a = [...a]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 function randomAssign(ids, n) { const o = {}; shuffle(ids).forEach((id, i) => { o[id] = i % n; }); return o; }
+// تقسيم متدرّج: كل فريق ياخد نفس العدد من كل تصنيف، والباقي يروح للفرق الأقل عدداً
+function tieredAssign(ids, n) {
+  const tc = tierCount(), buckets = {};
+  ids.forEach(id => { const k = S.tiers[id] >= 1 && S.tiers[id] <= tc ? S.tiers[id] : 0; (buckets[k] ||= []).push(id); });
+  const o = {}, tot = Array(n).fill(0);
+  Object.keys(buckets).map(Number).sort((a, b) => (a || 99) - (b || 99)).forEach(k => {
+    const per = Array(n).fill(0);
+    shuffle(buckets[k]).forEach(id => {
+      const key = i => per[i] * 1000 + tot[i], m = Math.min(...per.map((_, i) => key(i)));
+      const c = per.map((_, i) => i).filter(i => key(i) === m), i = c[Math.floor(Math.random() * c.length)];
+      o[id] = i; per[i]++; tot[i]++;
+    });
+  });
+  return o;
+}
+const autoAssign = (ids, n) => (T.mode === 'tier' ? tieredAssign(ids, n) : randomAssign(ids, n));
+const hasTiers = pl => pl.some(p => S.tiers[p.uid] >= 1);
 function splitHtml() {
   const pl = playersOf(S.att);
   return `<h2>${t('split_teams')}</h2>
   <label>${t('num_teams')}</label><select data-chg="tN">${[2, 3, 4, 5, 6].map(n => `<option ${T.n === n ? 'selected' : ''}>${n}</option>`).join('')}</select>
+  <label>${t('split_mode')}</label><select data-chg="tMode"><option value="tier" ${T.mode === 'tier' ? 'selected' : ''}>${t('mode_tier')}</option><option value="rand" ${T.mode === 'rand' ? 'selected' : ''}>${t('mode_rand')}</option></select>
+  ${T.mode === 'tier' ? `<div class="mute small" style="margin-top:6px">${t('tier_hint')} ${Array.from({ length: tierCount() }, (_, i) => `${t('tier_n', { n: i + 1 })}: ${pl.filter(p => S.tiers[p.uid] === i + 1).length}`).join(' · ')} · ${t('tier_none')}: ${pl.filter(p => !(S.tiers[p.uid] >= 1 && S.tiers[p.uid] <= tierCount())).length}</div>` : ''}
   <div class="row"><button class="btn" data-act="reshuffle">${t('reshuffle')}</button></div>
   ${Array.from({ length: T.n }, (_, i) => `<div style="margin-top:12px"><div class="mute small"><b>${t('team')} ${letters[i]}</b> (${pl.filter(p => T.assign[p.uid] === i).length})</div>
     <input data-inp="tTitle" data-i="${i}" maxlength="24" placeholder="${t('team_title_ph')}" value="${esc(T.titles[i] || '')}"></div>`).join('')}
   <div>${pl.map(p => `<div class="li"><div><b>${esc(p.name)}</b></div>
+    ${T.mode === 'tier' ? `<select style="width:84px" data-chg="tTier" data-id="${esc(p.uid)}"><option value="">-</option>${Array.from({ length: tierCount() }, (_, i) => `<option value="${i + 1}" ${S.tiers[p.uid] === i + 1 ? 'selected' : ''}>${i + 1}</option>`).join('')}</select>` : ''}
     <select style="width:90px" data-chg="tAssign" data-id="${esc(p.uid)}">${Array.from({ length: T.n }, (_, i) => `<option value="${i}" ${T.assign[p.uid] === i ? 'selected' : ''}>${letters[i]}</option>`).join('')}</select></div>`).join('')}</div>
   <div class="row"><button class="btn primary" data-act="saveTeams">${t('save')}</button><button class="btn" data-act="closeModal">${t('cancel')}</button></div>`;
 }
@@ -326,17 +346,22 @@ ACTIONS.splitTeams = () => {
   if (s.teams?.length) {
     const assign = {}; s.teams.forEach((tm, i) => tm.players.forEach(id => { assign[id] = i; }));
     pl.forEach(p => { if (assign[p.uid] === undefined) assign[p.uid] = 0; });
-    T = { n: s.teams.length, assign, titles: s.teams.map(tm => tm.title || '') };
+    T = { n: s.teams.length, assign, titles: s.teams.map(tm => tm.title || ''), mode: hasTiers(pl) ? 'tier' : 'rand' };
   } else {
     const n = Math.min(6, Math.max(2, Math.round(pl.length / (S.g.teamSize || 6))));
-    T = { n, assign: randomAssign(pl.map(p => p.uid), n), titles: [] };
+    T = { n, assign: {}, titles: [], mode: hasTiers(pl) ? 'tier' : 'rand' }; T.assign = autoAssign(pl.map(p => p.uid), n);
   }
   openModal(splitHtml);
 };
-CHANGES.tN = el => { T.n = +el.value; T.assign = randomAssign(playersOf(S.att).map(p => p.uid), T.n); redraw(); };
+CHANGES.tN = el => { T.n = +el.value; T.assign = autoAssign(playersOf(S.att).map(p => p.uid), T.n); redraw(); };
+CHANGES.tMode = el => { T.mode = el.value; T.assign = autoAssign(playersOf(S.att).map(p => p.uid), T.n); redraw(); };
+CHANGES.tTier = async el => {
+  const id = el.dataset.id, v = +el.value; if (v) S.tiers[id] = v; else delete S.tiers[id]; redraw();
+  try { if (v) await F.setDoc(gref('tiers', id), { tier: v }); else await F.deleteDoc(gref('tiers', id)); } catch (e) {}
+};
 INPUTS.tTitle = el => { T.titles[+el.dataset.i] = el.value; };
 CHANGES.tAssign = el => { T.assign[el.dataset.id] = +el.value; redraw(); };
-ACTIONS.reshuffle = () => { T.assign = randomAssign(playersOf(S.att).map(p => p.uid), T.n); redraw(); };
+ACTIONS.reshuffle = () => { T.assign = autoAssign(playersOf(S.att).map(p => p.uid), T.n); redraw(); };
 ACTIONS.saveTeams = async () => {
   const pl = playersOf(S.att);
   const teams = Array.from({ length: T.n }, (_, i) => ({ name: letters[i], title: (T.titles[i] || '').trim(), players: pl.filter(p => T.assign[p.uid] === i).map(p => p.uid) }));
@@ -701,7 +726,7 @@ ACTIONS.refSubIn = async el => {
   other.players = other.players.filter(x => x !== inId);
   const names = { ...(m.names || {}) }; if (!names[inId]) names[inId] = nameOf(inId);
   const teamA = k === 'A' ? mine : other, teamB = k === 'A' ? other : mine;
-  const ev = { id: evId(), type: 'sub', team: k, t: Math.floor(elapsedOf(m) / 1000), out: outId, in: inId };
+  const ev = { id: evId(), type: 'sub', team: k, t: Math.floor(elapsedOf(m) / 1000), out: outId, in: inId, from: (k === 'A' ? m.teamB : m.teamA).players.includes(inId) ? (k === 'A' ? 'B' : 'A') : '' };
   const events = [...(m.events || []), ev];
   await F.updateDoc(gref('matches', m.id), { events, teamA, teamB, names, players: [...new Set([...teamA.all, ...teamB.all])], updatedAt: F.serverTimestamp() });
   closeModal(); try { navigator.vibrate && navigator.vibrate(60); } catch (e) {}

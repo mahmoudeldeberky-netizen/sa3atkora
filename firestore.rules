@@ -116,6 +116,15 @@ service cloud.firestore {
         allow write: if isAdmin(gid);
       }
 
+      // ---------- مراكز اللاعبين (ظاهرة للكل) وتصنيف التقسيم (للأدمن فقط) ----------
+      match /pos/{id} {
+        allow read: if isActive(gid);
+        allow write: if isAdmin(gid);
+      }
+      match /tiers/{id} {
+        allow read, write: if isAdmin(gid);
+      }
+
       // ---------- المباريات (نتائج وأهداف) ----------
       match /matches/{mid} {
         allow read: if isActive(gid);

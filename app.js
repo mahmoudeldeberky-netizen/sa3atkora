@@ -66,7 +66,7 @@ function unsubAll(arr) { arr.forEach(u => { try { u(); } catch (e) {} }); arr.le
 function leaveGroup() {
   leaveSession(); unsubAll(S.subs); unsubAll(S.rsubs);
   Object.values(S.osubs).forEach(u => u()); S.osubs = {}; S.oatt = {};
-  Object.assign(S, { gid: null, g: null, me: undefined, members: {}, guests: {}, balances: {}, sessions: [], ledger: [], stats: null, audit: null, report: null, admSub: undefined, active: false, pubSynced: false, tab: 'matches', gtab: 'members' });
+  Object.assign(S, { gid: null, g: null, me: undefined, members: {}, guests: {}, pos: {}, tiers: {}, balances: {}, sessions: [], ledger: [], stats: null, audit: null, report: null, admSub: undefined, active: false, pubSynced: false, tab: 'matches', gtab: 'members' });
 }
 function enterGroup(gid) {
   leaveGroup(); S.gid = gid;
@@ -84,6 +84,7 @@ function startActive() {
   S.active = true; const gid = S.gid;
   S.subs.push(F.onSnapshot(F.doc(db, 'groups', gid), s => { S.g = s.exists() ? { id: s.id, ...s.data() } : null; render(); }, () => {}));
   S.subs.push(F.onSnapshot(F.collection(db, 'groups', gid, 'members'), s => { S.members = {}; s.docs.forEach(d => { S.members[d.id] = d.data(); }); render(); }, () => {}));
+  S.subs.push(F.onSnapshot(F.collection(db, 'groups', gid, 'pos'), s => { S.pos = {}; s.docs.forEach(d => { S.pos[d.id] = d.data().pos; }); render(); }, () => {}));
   S.subs.push(F.onSnapshot(F.collection(db, 'groups', gid, 'guests'), s => { S.guests = {}; s.docs.forEach(d => { S.guests[d.id] = { id: d.id, ...d.data() }; }); render(); }, () => {}));
   S.subs.push(F.onSnapshot(F.query(F.collection(db, 'groups', gid, 'sessions'), F.orderBy('startsAt', 'desc'), F.limit(40)), s => {
     S.sessions = s.docs.map(d => ({ id: d.id, ...d.data() })); syncOpenAtt(); render();
@@ -91,8 +92,9 @@ function startActive() {
 }
 function syncRoleSubs() {
   const adm = isAdmin(); if (adm === S.admSub) return;
-  S.admSub = adm; unsubAll(S.rsubs); const gid = S.gid, uid = S.user.uid; S.balances = {}; S.ledger = [];
+  S.admSub = adm; unsubAll(S.rsubs); const gid = S.gid, uid = S.user.uid; S.balances = {}; S.ledger = []; S.tiers = {};
   if (adm) {
+    S.rsubs.push(F.onSnapshot(F.collection(db, 'groups', gid, 'tiers'), s => { S.tiers = {}; s.docs.forEach(d => { S.tiers[d.id] = d.data().tier; }); render(); }, () => {}));
     S.rsubs.push(F.onSnapshot(F.collection(db, 'groups', gid, 'balances'), s => { S.balances = {}; s.docs.forEach(d => { S.balances[d.id] = d.data(); }); render(); }, () => {}));
     S.rsubs.push(F.onSnapshot(F.query(F.collection(db, 'groups', gid, 'ledger'), F.orderBy('at', 'desc'), F.limit(150)), s => { S.ledger = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); }, () => {}));
   } else {
