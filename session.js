@@ -489,12 +489,19 @@ ACTIONS.meDelete = () => confirmBox(t('delete_match_q'), async () => {
 }, true);
 
 // =============== referee mode (stopwatch + live events) ===============
-let refTimer = null, audioCtx = null, wake = null, firedKey = '', R = null;
+let refTimer = null, audioCtx = null, wake = null, firedKey = '', susKey = '', R = null;
 const liveOf = id => S.smatches.find(m => m.id === id);
 const elapsedOf = m => (m.elapsedMs || 0) + (m.running ? Date.now() - (m.lastStart || Date.now()) : 0);
 const remainingMs = m => (m.durationSec || 900) * 1000 - elapsedOf(m);
 const mmss = ms => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; };
 const clockCls = m => (m.status !== 'live' ? '' : (!m.running ? 'pause' : (remainingMs(m) <= 60000 ? 'low' : 'run')));
+const redMax = () => Math.max(30, Math.round((S.g?.redMinutes ?? 2) * 60));
+const redOptions = () => { const mx = redMax(), o = []; for (let x = 30; x < mx; x += 30) o.push(x); o.push(mx); return o; };
+// الطرد المؤقت: النشطين حاليًا (بحسب ساعة الماتش) مع الوقت المتبقي بالثواني
+const suspensions = m => {
+  const now = elapsedOf(m) / 1000;
+  return (m.events || []).filter(e => e.type === 'red' && e.dur > 0 && now < (e.t || 0) + e.dur).map(e => ({ e, left: Math.ceil((e.t || 0) + e.dur - now) }));
+};
 const evId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
 
 function ensureAudio() {
@@ -528,6 +535,12 @@ function refTick() {
   const m = S.nav.view === 'referee' && liveOf(S.nav.mid); if (!m) return;
   const el = document.getElementById('ref_clock');
   if (el) { el.textContent = mmss(m.status === 'live' ? remainingMs(m) : 0); el.className = 'clock ' + clockCls(m); }
+  if (m.status === 'live') {
+    const act = suspensions(m);
+    act.forEach(x => { const n = document.querySelector(`[data-sus="${x.e.id}"]`); if (n) n.textContent = mmss(x.left * 1000); });
+    const ids = act.map(x => x.e.id).join(',');
+    if (ids !== susKey) { const ended = susKey && susKey.split(',').filter(x => x && !ids.split(',').includes(x)).length; susKey = ids; if (ended) beep(1); S.render(); }
+  }
   const key = m.id + ':' + m.durationSec;
   if (m.status === 'live' && m.running && remainingMs(m) <= 0 && firedKey !== key) {
     firedKey = key; beep();
@@ -601,6 +614,8 @@ export function refereeView() {
     ${adm && live ? `<div class="row"><button class="btn primary" data-act="refToggle">${m.running ? t('pause') : (m.elapsedMs ? t('resume') : t('kickoff'))}</button>
       <button class="btn" data-act="refAddMin">${t('add_minute')}</button></div>` : ''}</div>`;
   h += `<div class="grid2" style="margin:12px 16px">${panel('A')}${panel('B')}</div>`;
+  const sus = live ? suspensions(m) : [];
+  if (sus.length) h += `<div class="card"><b>${t('suspended')}</b>${sus.map(x => `<div class="li"><span class="cd cr"></span><div><b>${pl(x.e.uid)}</b></div><span class="tag">${t('team')} ${tl(x.e.team === 'A' ? m.teamA : m.teamB)}</span><b dir="ltr" data-sus="${esc(x.e.id)}">${mmss(x.left * 1000)}</b></div>`).join('')}</div>`;
   if (m.scoreA === m.scoreB && (m.pens || (adm && live))) {
     h += `<div class="card"><b>${t('shootout')}</b>${m.pens ? `<div class="grid2" style="margin-top:8px">${['a', 'b'].map(k => `<div style="text-align:center"><div class="small mute">${t('team')} ${tl(k === 'a' ? m.teamA : m.teamB)}</div>
       <div style="display:flex;justify-content:center;align-items:center;gap:8px">${adm && live ? `<button class="btn sm" data-act="refPen" data-k="${k}" data-d="-1">-</button>` : ''}<b class="big" dir="ltr">${m.pens[k]}</b>${adm && live ? `<button class="btn sm" data-act="refPen" data-k="${k}" data-d="1">+</button>` : ''}</div></div>`).join('')}</div>` : ''}
@@ -668,6 +683,10 @@ function refEvHtml() {
       <div class="row" style="margin-top:0"><button class="btn ${R.penalty ? 'primary' : ''}" data-act="refTog" data-k="penalty">${t('penalty')}</button>
       <button class="btn ${R.og ? 'primary' : ''}" data-act="refTog" data-k="og">${t('own_goal')}</button></div>
       <h3 style="margin:12px 0 4px">${t('pick_scorer')}${R.og ? ` (${t('team')} ${tl(op)})` : ''}</h3>${(R.og ? op : tm).players.map(id => btn(id)).join('')}`;
+  } else if (R.type === 'red' && R.step === 'dur') {
+    body = `<h2>${t('red_btn')} - ${esc(m.names?.[R.pid] || '-')}</h2><h3 style="margin:8px 0 4px">${t('red_duration')}</h3>
+      <div class="row" style="margin-top:0">${redOptions().map(d => `<button class="btn ${d === redMax() ? 'primary' : ''}" data-act="refRedDur" data-d="${d}">${mmss(d * 1000)}</button>`).join('')}</div>
+      <div class="mute small" style="margin-top:8px">${t('red_hint', { m: fmtNum(redMax() / 60) })}</div>`;
   } else {
     const title = { yellow: t('yellow_btn'), red: t('red_btn'), save: t('save_btn') }[R.type];
     body = `<h2>${title} - ${t('team')} ${tl(tm)}</h2>${tm.players.map(id => btn(id, R.type === 'yellow' && yc(id) ? `<span class="tag gold">${t('yellow_btn')} x${yc(id)}</span>` : '')).join('')}`;
@@ -679,7 +698,7 @@ async function commitEv(extra) {
   const m = liveOf(S.nav.mid); if (!m) return;
   const t0 = Math.floor(elapsedOf(m) / 1000);
   const add = [{ id: evId(), type: R.type, team: R.team, t: t0, uid: '', assist: '', penalty: false, og: false, ...extra }];
-  if (R.type === 'yellow' && (m.events || []).some(e => e.type === 'yellow' && e.uid === extra.uid)) add.push({ id: evId(), type: 'red', team: R.team, t: t0, uid: extra.uid, second: true });
+  if (R.type === 'yellow' && (m.events || []).some(e => e.type === 'yellow' && e.uid === extra.uid)) add.push({ id: evId(), type: 'red', team: R.team, t: t0, uid: extra.uid, second: true, dur: redMax() });
   await pushEvents(m, ev => [...ev, ...add]);
   closeModal(); try { navigator.vibrate && navigator.vibrate(60); } catch (e) {}
 }
@@ -691,8 +710,10 @@ ACTIONS.refPick = async el => {
     if (R.og || R.penalty) return commitEv({ uid: id, penalty: R.penalty, og: R.og });
     R.step = 'assist'; redraw(); return;
   }
+  if (R.type === 'red') { R.pid = id; R.step = 'dur'; redraw(); return; }
   return commitEv({ uid: id });
 };
+ACTIONS.refRedDur = el => commitEv({ uid: R.pid, dur: Math.min(redMax(), Math.max(1, +el.dataset.d || redMax())) });
 ACTIONS.refNoAssist = () => commitEv({ uid: R.scorer, assist: '', penalty: R.penalty, og: R.og });
 
 // ---- substitution (any team, while the match is live) ----

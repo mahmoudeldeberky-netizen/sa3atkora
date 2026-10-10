@@ -174,7 +174,7 @@ export const icon = (n, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 24 24"
 export function bar(title, back = false, extra = '') {
   return `<div class="bar">${back ? `<button data-act="back" aria-label="back">${icon('back', 'flip')}</button>` : ''}<h1>${esc(title)}</h1>${extra}</div>`;
 }
-export const VERSION = globalThis.APP_VERSION || '1.2.0';
+export const VERSION = globalThis.APP_VERSION || '1.2.1';
 export const versionLine = () => `<div class="mute small" style="text-align:center;padding:18px 16px 8px"><span dir="auto">${t('version')}</span> <span dir="ltr">${VERSION}</span></div>`;
 export const spinner = () => '<div class="empty"><div class="spin"></div></div>';
 export function pubOf(p) {

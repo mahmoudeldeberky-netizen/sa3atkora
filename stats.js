@@ -137,7 +137,7 @@ export function eventLine(m, e, del = false) {
   let body = '';
   if (e.type === 'goal') body = `<b>${nm(e.uid)}</b>${e.og ? ` <span class="tag warn">${t('own_goal')}</span>` : ''}${e.penalty ? ` <span class="tag gold">${t('penalty')}</span>` : ''}${e.assist ? `<div class="mute small">${t('assist_by')}: ${nm(e.assist)}</div>` : ''}`;
   else if (e.type === 'yellow') body = `<span class="cd cy"></span> <b>${nm(e.uid)}</b>`;
-  else if (e.type === 'red') body = `<span class="cd cr"></span> <b>${nm(e.uid)}</b>${e.second ? ` <span class="tag">${t('second_yellow')}</span>` : ''}`;
+  else if (e.type === 'red') body = `<span class="cd cr"></span> <b>${nm(e.uid)}</b>${e.second ? ` <span class="tag">${t('second_yellow')}</span>` : ''}${e.dur ? ` <span class="tag warn" dir="ltr">${Math.floor(e.dur / 60)}:${String(e.dur % 60).padStart(2, '0')}</span>` : ''}`;
   else if (e.type === 'sub') body = `${icon('swap')} <b>${nm(e.in)}</b><div class="mute small">${t('sub_out')}: ${nm(e.out)}</div>`;
   else body = `<b>${nm(e.uid)}</b> <span class="tag">${t('save_word')}</span>`;
   return `<div class="li"><b dir="ltr" style="width:40px">${Math.floor((e.t || 0) / 60) + 1}'</b><div>${body}</div><span class="tag">${t('team')} ${tn}</span>${del && e.type !== 'sub' ? `<button class="btn sm danger" data-act="refDelEv" data-id="${esc(e.id)}">${icon('x')}</button>` : ''}</div>`;

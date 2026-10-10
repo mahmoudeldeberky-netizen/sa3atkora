@@ -96,6 +96,7 @@ ar: {
   position: 'المركز', pos_none: 'غير محدد', pos_gk: 'حارس مرمى', pos_def: 'مدافع', pos_mid: 'وسط', pos_fwd: 'مهاجم', pos_hint: 'المركز اختياري ويظهر لكل اللاعبين.', roster_admin: 'المركز والتصنيف',
   clean_sheets: 'شباك نظيفة', conceded: 'أهداف دخلت مرماه', rk_cs: 'شباك نظيفة',
   ach_cs1: 'شباك نظيفة', ach_cs1_d: 'ماتش من غير ما تدخل عليك أهداف', ach_cs5: '5 شباك نظيفة', ach_cs5_d: 'حافظت على شباكك 5 مرات', ach_cs10: 'سور الفريق', ach_cs10_d: '10 شباك نظيفة', ach_top3cs: 'من أفضل 3 في الدفاع', ach_top3cs_d: 'ضمن أول 3 في الشباك النظيفة'
+  ,suspended: 'مطرودون مؤقتاً', red_duration: 'مدة الطرد', red_hint: 'الحد الأقصى {m} دقيقة، واللاعب يرجع بعدها. تقدر تختار وقت أقل.', red_max_minutes: 'أقصى مدة للطرد (بالدقايق)'
 },
 en: {
   app_name: 'Sa3et Kora', tagline: 'Organize your football hour with friends: attendance, balances, results and stats',
@@ -193,5 +194,6 @@ en: {
   position: 'Position', pos_none: 'Not set', pos_gk: 'Goalkeeper', pos_def: 'Defender', pos_mid: 'Midfielder', pos_fwd: 'Forward', pos_hint: 'Position is optional and visible to all players.', roster_admin: 'Position and tier',
   clean_sheets: 'Clean sheets', conceded: 'Goals conceded', rk_cs: 'Clean sheets',
   ach_cs1: 'Clean sheet', ach_cs1_d: 'A match without conceding', ach_cs5: '5 clean sheets', ach_cs5_d: 'Kept 5 clean sheets', ach_cs10: 'The wall', ach_cs10_d: '10 clean sheets', ach_top3cs: 'Top 3 defender', ach_top3cs_d: 'In the top 3 for clean sheets'
+  ,suspended: 'Sent off (temporary)', red_duration: 'Suspension length', red_hint: 'Maximum {m} min, then the player may return. You can pick a shorter time.', red_max_minutes: 'Max red card length (minutes)'
 }
 };
