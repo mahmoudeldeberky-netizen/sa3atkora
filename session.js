@@ -1,5 +1,6 @@
 import { S, F, db, ACTIONS, CHANGES, INPUTS, t, esc, av, val, num, checked, money, fmtNum, dt, tsMs, toLocalInput, toast, openModal, closeModal, drawModal, confirmBox,
   numIn, dtIn, icon, bar, spinner, isAdmin, isOwner, canEditMatch, gref, gcol, addAudit, addLedger, bumpFund, balanceOf, slotCount, playersOf, attMapFor, myName, photoOf, feat, download, tl, tlab, nameOf, tierCount } from './core.js';
+import { ensureAudio, sound, banner, soundOn, setSound } from './fx.js';
 import { matchModal, eventLine, shootoutBlock, evFilter, evList } from './stats.js';
 
 const sessOf = id => S.sessions.find(x => x.id === (id || S.sid));
@@ -590,7 +591,7 @@ ACTIONS.attSwapDo = async el => {
 };
 
 // =============== referee mode (stopwatch + live events) ===============
-let refTimer = null, audioCtx = null, wake = null, firedKey = '', susKey = '', R = null;
+let refTimer = null, wake = null, firedKey = '', susKey = '', R = null;
 const liveOf = id => S.smatches.find(m => m.id === id);
 const elapsedOf = m => (m.elapsedMs || 0) + (m.running ? Date.now() - (m.lastStart || Date.now()) : 0);
 const remainingMs = m => (m.durationSec || 900) * 1000 - elapsedOf(m);
@@ -605,19 +606,41 @@ const suspensions = m => {
 };
 const evId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
 
-function ensureAudio() {
-  try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); } catch (e) {}
+const beep = (n = 3) => sound(n === 1 ? 'short' : 'end');
+document.addEventListener('pointerdown', () => { if (S.nav.view === 'referee') ensureAudio(); });
+
+// ---- تأثيرات صوتية وبصرية لأي حد شايف الماتش المباشر ----
+let FX = { mid: '', ids: new Set(), running: false, ended: false };
+function fxEvent(m, e, skipYellow) {
+  const nm = id => m.names?.[id] || nameOf(id), team = `${t('team')} ${tl(e.team === 'A' ? m.teamA : m.teamB)}`;
+  if (e.type === 'goal') { sound('goal'); banner({ kind: e.penalty ? 'pgoal' : 'goal', title: e.penalty ? t('fx_pen_goal') : (e.og ? t('fx_own_goal') : t('fx_goal')), sub: nm(e.uid), team }); }
+  else if (e.type === 'save') { sound('save'); banner({ kind: 'save', title: t('fx_save'), sub: nm(e.uid), team }); }
+  else if (e.type === 'yellow') { if (skipYellow) return; sound('yellow'); banner({ kind: 'yellow', title: t('fx_yellow'), sub: nm(e.uid), team }); }
+  else if (e.type === 'red') { sound('red'); banner({ kind: 'red', title: t('fx_red'), sub: nm(e.uid), team }); }
 }
-function beep(n = 3) {
-  try { navigator.vibrate && navigator.vibrate([300, 150, 300, 150, 500]); } catch (e) {}
-  if (!audioCtx) return;
-  for (let i = 0; i < n; i++) {
-    const o = audioCtx.createOscillator(), g = audioCtx.createGain(), at = audioCtx.currentTime + i * 0.4;
-    o.frequency.value = i === n - 1 ? 1100 : 800; o.connect(g); g.connect(audioCtx.destination);
-    g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(0.4, at + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, at + 0.3);
-    o.start(at); o.stop(at + 0.32);
-  }
+function fxKick(m, k) {
+  const nm = id => m.names?.[id] || nameOf(id), team = `${t('team')} ${tl(k.team === 'A' ? m.teamA : m.teamB)}`;
+  if (k.res === 'goal') { sound('goal'); banner({ kind: 'pgoal', title: t('fx_pen_goal'), sub: nm(k.uid), team }); }
+  else if (k.res === 'saved') { sound('save'); banner({ kind: 'save', title: t('fx_save'), sub: k.gk ? nm(k.gk) : nm(k.uid), team }); }
+  else { sound('miss'); banner({ kind: 'miss', title: t('fx_pen_miss'), sub: nm(k.uid), team }); }
 }
+function fxScan(m) {
+  const evs = m.events || [], kicks = m.shootout?.kicks || [];
+  const ids = new Set([...evs.map(e => e.id), ...kicks.map(k => k.id)]);
+  if (FX.mid !== m.id) { FX = { mid: m.id, ids, running: !!m.running, ended: m.status !== 'live' || !!m.timeUp }; return; }
+  const fresh = evs.filter(e => e.id && !FX.ids.has(e.id));
+  fresh.forEach(e => {
+    fxEvent(m, e, e.type === 'yellow' && fresh.some(x => x.type === 'red' && x.uid === e.uid && x.second));
+    const row = document.querySelector(`[data-ev="${e.id}"]`); if (row) row.classList.add('evflash');
+  });
+  kicks.filter(k => k.id && !FX.ids.has(k.id)).forEach(k => fxKick(m, k));
+  if (m.status === 'live' && m.running && !FX.running) sound((m.elapsedMs || 0) < 1000 ? 'kickoff' : 'resume');
+  if (FX.ended && m.status === 'live' && remainingMs(m) > 1000) FX.ended = false;
+  if (!FX.ended && m.status !== 'live') { FX.ended = true; sound('end'); }
+  FX.ids = ids; FX.running = !!m.running;
+}
+ACTIONS.sndToggle = () => { setSound(!soundOn()); if (soundOn()) { ensureAudio(); sound('short'); } S.render(); };
+
 function derive(events) {
   let scoreA = 0, scoreB = 0; const goals = [], saves = {};
   events.forEach(e => {
@@ -634,6 +657,7 @@ const patchLive = (id, data) => F.updateDoc(gref('matches', id), { ...data, upda
 
 function refTick() {
   const m = S.nav.view === 'referee' && liveOf(S.nav.mid); if (!m) return;
+  fxScan(m);
   const el = document.getElementById('ref_clock');
   if (el) { el.textContent = mmss(m.status === 'live' ? remainingMs(m) : 0); el.className = 'clock ' + clockCls(m); }
   if (m.status === 'live') {
@@ -644,7 +668,7 @@ function refTick() {
   }
   const key = m.id + ':' + m.durationSec;
   if (m.status === 'live' && m.running && remainingMs(m) <= 0 && firedKey !== key) {
-    firedKey = key; beep();
+    firedKey = key; if (!FX.ended) { FX.ended = true; sound('end'); }
     if (isAdmin()) patchLive(m.id, { running: false, elapsedMs: (m.durationSec || 900) * 1000, lastStart: 0, timeUp: true }).catch(() => {});
   }
 }
@@ -711,6 +735,7 @@ export function refereeView() {
   const events = [...(m.events || [])].reverse();
   let h = bar(`${t('match')} ${m.no || ''}`, true, live ? `<span class="tag warn" style="background:#fff;margin-inline-end:8px">${t('live')}</span>` : '');
   h += `<div class="card" style="text-align:center"><div id="ref_clock" class="clock ${clockCls(m)}" dir="ltr">${mmss(live ? remainingMs(m) : 0)}</div>
+    <div class="row" style="margin:6px 0 0;justify-content:center"><button class="btn sm" data-act="sndToggle">${soundOn() ? t('sound_on') : t('sound_off')}</button></div>
     <div class="mute small">${live ? (m.timeUp ? t('time_up') : (m.running ? t('running') : t('paused'))) : t('match_ended')} · ${t('match_minutes')}: ${fmtNum((m.durationSec || 900) / 60)}</div>
     ${adm && live ? `<div class="row"><button class="btn primary" data-act="refToggle">${m.running ? t('pause') : (m.elapsedMs ? t('resume') : t('kickoff'))}</button>
       <button class="btn" data-act="refAddMin">${t('add_minute')}</button><button class="btn" data-act="refRoles">${t('match_roles')}</button></div>` : ''}</div>`;
@@ -741,6 +766,7 @@ ACTIONS.refPens = async () => {
 };
 ACTIONS.refEnd = () => confirmBox(t('end_match_q'), async () => {
   const m = liveOf(S.nav.mid); if (!m) return;
+  if (FX.mid === m.id && !FX.ended) { FX.ended = true; sound('end'); }
   const b = F.writeBatch(db);
   b.update(gref('matches', m.id), { status: 'done', running: false, elapsedMs: elapsedOf(m), lastStart: 0, pens: m.scoreA === m.scoreB ? (m.pens || null) : null, shootout: m.scoreA === m.scoreB ? (m.shootout || null) : null, endedAt: F.serverTimestamp(), updatedAt: F.serverTimestamp() });
   addAudit(b, 'match_end', `#${m.no} ${m.teamA.name} ${m.scoreA}-${m.scoreB} ${m.teamB.name}`);
